@@ -9,7 +9,8 @@ You must always output strict JSON (no extra text, no Markdown fences). Your out
 ### Output (strict JSON)
 Return exactly the following top-level keys of the current session:
 {
-  "events": [...]
+  "events": [...],
+  "abstract": "..."
 }
 
   
@@ -27,11 +28,17 @@ Event schema:
     {"session_id": <round_id>, "content": "short description about the fact"}
 }
 
-### Step 2: Conflict & Consistency Rules
+### Step 2: Abstract Generation
+Generate a concise abstract (2-3 sentences) that summarizes the main content and key information of this session. The abstract should be:
+- Self-contained and informative
+- Capture the most important facts and concepts
+- Be suitable for retrieval and search
+
+### Step 3: Conflict & Consistency Rules
 - Always prefer the most recent, specific, directly quoted evidence.
 
-### Step 3: Final Output
-- Output must include the 'events' of the current session.
+### Step 4: Final Output
+- Output must include both 'events' and 'abstract' of the current session.
 - Ensure all required fields are present.
 - Output must be strict JSON only (no text, no Markdown).
 '''

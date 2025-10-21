@@ -24,35 +24,29 @@ from tqdm import tqdm
 import threading
 import queue
 
+# 添加项目根目录到Python路径
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(current_dir))
+sys.path.insert(0, project_root)
+
 import tiktoken
 from gam.llm_call import OpenRouterModel
-from gam.agents import MemoryAgent, DeepResearchAgent
+from gam.agents import (
+    MemoryAgent, 
+    DeepResearchAgent
+)
+from gam.utils import (
+    build_session_chunks_from_text,
+    build_pages_from_sessions_and_abstracts,
+    safe_json_extract
+)
 
-
-# ========== 全局配置 ==========
-# API模型配置
-DEFAULT_API_MODEL = "gpt-4o-mini"
 
 # ========== 工具函数 ==========
 def md5(s: str) -> str:
     return hashlib.md5(s.encode("utf-8")).hexdigest()
 
 
-def safe_json_extract(candidate: Any) -> Optional[Dict[str, Any]]:
-    """尽量把模型输出（string/dict）解析成 dict，失败返回 None。"""
-    if isinstance(candidate, dict):
-        return candidate
-    if not isinstance(candidate, str):
-        return None
-    s = candidate.strip()
-    l = s.find('{')
-    r = s.rfind('}')
-    if l == -1 or r == -1 or r <= l:
-        return None
-    try:
-        return json.loads(s[l:r+1])
-    except Exception:
-        return None
 
 
 def ensure_dir(p: str):
@@ -140,7 +134,7 @@ def truncate_tokens(s: str, max_tokens: Optional[int], model: str) -> str:
 def build_session_chunks_for_sample(sample: Dict[str, Any], model_name: str = "gpt-4o-mini", max_tokens: int = 2000) -> List[str]:
     """
     为LongCodeBench样本构建会话块
-    针对repo_text部分构建记忆，将repository文本按token数量分割成多个会话块
+    使用通用的build_session_chunks_from_text函数
     
     Args:
         sample: 包含repo_text的样本数据
@@ -148,108 +142,63 @@ def build_session_chunks_for_sample(sample: Dict[str, Any], model_name: str = "g
         max_tokens: 每个会话块的最大token数量
     """
     repo_text = sample.get("repo_text") or ""
-    
-    if not repo_text:
-        return []
-    
-    # 使用tiktoken进行token切分
-    try:
-        # 根据模型名称获取对应的编码器
-        if "gpt-4o" in model_name.lower():
-            encoding = tiktoken.encoding_for_model("gpt-4o-2024-08-06")
-        elif "gpt-3.5" in model_name.lower():
-            encoding = tiktoken.get_encoding("cl100k_base")
-        else:
-            # 默认使用cl200k_base编码器（适用于gpt-4o系列）
-            encoding = tiktoken.encoding_for_model("gpt-4o-2024-08-06")
-        
-        # 将文本编码为tokens
-        tokens = encoding.encode(repo_text)
-        
-        if len(tokens) <= max_tokens:
-            # 如果文本长度小于max_tokens，直接返回单个块
-            return [f"[Session 1]\n{repo_text}"]
-        
-        # 按max_tokens切分tokens
-        chunks = []
-        for i in range(0, len(tokens), max_tokens):
-            chunk_tokens = tokens[i:i + max_tokens]
-            chunk_text = encoding.decode(chunk_tokens)
-            session_id = len(chunks) + 1
-            chunks.append(f"[Session {session_id}]\n{chunk_text}")
-        
-        return chunks
-        
-    except Exception as e:
-        print(f"Warning: tiktoken切分失败: {e}，使用字符切分作为fallback")
-        # 如果tokenizer切分失败，使用字符切分作为fallback
-        return _build_chunks_by_char(repo_text, max_tokens * 4)  # 粗略估计：1 token ≈ 4 characters
-
-
-def _build_chunks_by_char(text: str, max_chars: int) -> List[str]:
-    """
-    按字符数切分文本的fallback方法
-    """
-    if len(text) <= max_chars:
-        return [f"[Session 1]\n{text}"]
-    
-    chunks = []
-    for i in range(0, len(text), max_chars):
-        chunk_text = text[i:i + max_chars]
-        session_id = len(chunks) + 1
-        chunks.append(f"[Session {session_id}]\n{chunk_text}")
-    
-    return chunks
+    return build_session_chunks_from_text(repo_text, max_tokens, model_name)
 
 
 # ========== 记忆处理 ==========
 def build_memory_for_sample(llm, session_chunks: List[str], temperature: float = 0.3):
     """
-    顺序运行 MemoryAgent：只负责把 sessions -> events state。
-    返回：(mem_agent, memory_history, final_memory_state)
+    顺序运行 MemoryAgent：只负责把 sessions -> events state + abstracts。
+    返回：(mem_agent, memory_history, final_memory_state, session_abstracts)
     """
     mem = MemoryAgent(llm, temperature=temperature)
     history = mem.run_memory_agent(sessions=session_chunks)
-    final_state_raw = mem.get_final_memory_output() 
-    final_state = safe_json_extract(final_state_raw) or final_state_raw
-    return mem, history, final_state
+    
+    # 使用新的get_memory_with_abstracts方法
+    memory_with_abstracts = mem.get_memory_with_abstracts()
+    final_state = memory_with_abstracts
+    session_abstracts = memory_with_abstracts.get('session_abstracts', [])
+    
+    return mem, history, final_state, session_abstracts
+
+
 
 
 def memory_deep_research(qs_llm, final_memory: Dict[str, Any],
                               session_chunks: List[str],
                               question: str,
+                              session_abstracts: List[str] = None,
                               max_sessions: int = 6,
                               temperature: float = 0.3) -> Dict[str, Any]:
     """
     只回答：不重建记忆。要求已经有 final_memory（可从磁盘加载），且能拿到原始 session 文本。
-    Research 直接检索顺序的 sessions(list[str])，1-based session_id。
+    现在支持使用session_abstracts来创建pages进行检索。
     """
-    # 将session_chunks转换为DeepResearchAgent期望的格式
-    # sessions_dict = []
-    # for i, chunk in enumerate(session_chunks):
-    #     sessions_dict.append({
-    #         "session_id": i + 1,  # 1-based session_id
-    #         "session_text": chunk
-    #     })
+    # 构建pages
+    if session_abstracts:
+        pages = build_pages_from_sessions_and_abstracts(session_chunks, session_abstracts)
+    else:
+        # 如果没有abstracts，直接使用sessions作为pages
+        pages = session_chunks
     
+    # 使用DeepResearchAgent进行research
     ret = DeepResearchAgent(qs_llm, temperature=temperature)
-    result = ret.deep_research(
-        question=question,
-        memory=final_memory,      # 仅作为 planning hint
-        sessions=session_chunks,   # 转换后的格式
-        max_sessions=max_sessions
-    )
-    return result  # {summary, salient_facts, citations, session_ids_used, iterations}
+    result = ret.deep_research(question, final_memory, pages, max_sessions)
+    
+    return result
 
 
 def deep_research_answer(qs_llm, final_memory, session_chunks: List[str],
-                         question: str, max_sessions: int = 6, temperature: float = 0.3) -> Tuple[str, List[int]]:
+                         question: str, session_abstracts: List[str] = None,
+                         max_sessions: int = 6, temperature: float = 0.3) -> Tuple[str, List[int]]:
     """
     用 DeepResearchAgent 取回相关 sessions + 总结。
     返回：(summary_text, used_session_ids)
     """
     result = memory_deep_research(
-        qs_llm, final_memory, session_chunks, question, max_sessions=max_sessions, temperature=temperature
+        qs_llm, final_memory, session_chunks, question, 
+        session_abstracts=session_abstracts,
+        max_sessions=max_sessions, temperature=temperature
     )
     session_ids = result.get("session_ids_used") or result.get("session_ids") or []
     summary = result.get("summary", "")
@@ -358,10 +307,12 @@ def process_memory_only(sample: Dict[str, Any], sample_index: int, gpu_id: int, 
             session_chunks = build_session_chunks_for_sample(sample, args.model_memory, args.max_tokens)
         except Exception as e:
             print(f"[Sample-{sample_index}] Warning: 无法使用tiktoken切分: {e}")
+            # 使用字符切分作为fallback
+            from gam.utils import _build_chunks_by_char
             session_chunks = _build_chunks_by_char(sample.get("repo_text", ""), args.max_tokens * 4)
         
         # 构建记忆
-        mem_agent, history, final_memory = build_memory_for_sample(memory_model, session_chunks, args.temperature)
+        mem_agent, history, final_memory, session_abstracts = build_memory_for_sample(memory_model, session_chunks, args.temperature)
         
         # 立即保存
         
@@ -370,6 +321,7 @@ def process_memory_only(sample: Dict[str, Any], sample_index: int, gpu_id: int, 
             "sample_index": sample_index,
             # "memory_history": history,
             "final_memory": final_memory,
+            "session_abstracts": session_abstracts,
             "num_sessions": len(session_chunks),
             "mode": "memory_only",
             "timestamp": datetime.now(timezone.utc).isoformat()
@@ -402,6 +354,7 @@ def process_answer_only(sample: Dict[str, Any], sample_index: int, gpu_id: int, 
         # 加载记忆
         memory_file = os.path.join(args.outdir, "all_samples_memory.jsonl")
         final_memory = None
+        session_abstracts = None
         if os.path.exists(memory_file):
             try:
                 with open(memory_file, 'r', encoding='utf-8') as f:
@@ -410,6 +363,7 @@ def process_answer_only(sample: Dict[str, Any], sample_index: int, gpu_id: int, 
                             memory_data = json.loads(line.strip())
                             if memory_data.get("sample_id") == sample_id:
                                 final_memory = memory_data.get("final_memory")
+                                session_abstracts = memory_data.get("session_abstracts", [])
                                 break
             except Exception as e:
                 print(f"[Sample-{sample_index}] Warning: 无法加载记忆: {e}")
@@ -423,6 +377,8 @@ def process_answer_only(sample: Dict[str, Any], sample_index: int, gpu_id: int, 
             session_chunks = build_session_chunks_for_sample(sample, args.model_research, args.max_tokens)
         except Exception as e:
             print(f"[Sample-{sample_index}] Warning: 无法使用tiktoken切分: {e}")
+            # 使用字符切分作为fallback
+            from gam.utils import _build_chunks_by_char
             session_chunks = _build_chunks_by_char(sample.get("repo_text", ""), args.max_tokens * 4)
         
         # 处理问答
@@ -434,7 +390,8 @@ def process_answer_only(sample: Dict[str, Any], sample_index: int, gpu_id: int, 
             return {"sample_id": sample_id, "sample_index": sample_index, "status": "error", "error": "Missing question or prompt_goal"}
         
         final_memory_str = json.dumps(final_memory, ensure_ascii=False, indent=2)
-        summary, session_ids = deep_research_answer(research_model, final_memory_str, session_chunks, question, max_sessions=args.max_sessions, temperature=args.temperature)
+        summary, session_ids = deep_research_answer(research_model, final_memory_str, session_chunks, question, 
+                                                   session_abstracts=session_abstracts, max_sessions=args.max_sessions, temperature=args.temperature)
         
         summary_answer = answer_with_summary(answer_model, prompt_goal, summary, question, args.temperature)
         memory_answer = answer_with_memory(answer_model, prompt_goal, final_memory_str, question, args.temperature)
@@ -491,10 +448,12 @@ def process_build_and_answer(sample: Dict[str, Any], sample_index: int, gpu_id: 
             session_chunks = build_session_chunks_for_sample(sample, args.model_memory, args.max_tokens)
         except Exception as e:
             print(f"[Sample-{sample_index}] Warning: 无法使用tiktoken切分: {e}")
+            # 使用字符切分作为fallback
+            from gam.utils import _build_chunks_by_char
             session_chunks = _build_chunks_by_char(sample.get("repo_text", ""), args.max_tokens * 4)
         
         # 构建记忆
-        mem_agent, history, final_memory = build_memory_for_sample(memory_model, session_chunks, args.temperature)
+        mem_agent, history, final_memory, session_abstracts = build_memory_for_sample(memory_model, session_chunks, args.temperature)
         
         # 保存记忆
         memory_result = {
@@ -502,6 +461,7 @@ def process_build_and_answer(sample: Dict[str, Any], sample_index: int, gpu_id: 
             "sample_index": sample_index,
             # "memory_history": history,
             "final_memory": final_memory,
+            "session_abstracts": session_abstracts,
             "num_sessions": len(session_chunks),
             "mode": "build_and_answer",
             "timestamp": datetime.now(timezone.utc).isoformat()
@@ -520,7 +480,8 @@ def process_build_and_answer(sample: Dict[str, Any], sample_index: int, gpu_id: 
             return {"sample_id": sample_id, "sample_index": sample_index, "status": "error", "error": "Missing question or prompt_goal"}
         
         final_memory_str = json.dumps(final_memory, ensure_ascii=False, indent=2)
-        summary, session_ids = deep_research_answer(research_model, final_memory_str, session_chunks, question, max_sessions=args.max_sessions, temperature=args.temperature)
+        summary, session_ids = deep_research_answer(research_model, final_memory_str, session_chunks, question, 
+                                                   session_abstracts=session_abstracts, max_sessions=args.max_sessions, temperature=args.temperature)
         
         summary_answer = answer_with_summary(answer_model, prompt_goal, summary, question, args.temperature)
         memory_answer = answer_with_memory(answer_model, prompt_goal, final_memory_str, question, args.temperature)
@@ -620,20 +581,20 @@ def generate_global_memory_files(results_dir: str, all_stats: List[Dict[str, Any
 # ========== 主函数 ==========
 def main():
     parser = argparse.ArgumentParser(description="LongCodeBench QA with Memory Agent Architecture (v3)")
-    parser.add_argument("--data", type=str, default=r"D:\python\Streamingllm\datasets\longcodebench\512K.json", help="Path to LongCodeBench dataset JSON")
-    parser.add_argument("--mode", type=str, default="answer_only", choices=["memory_only", "answer_only", "build_and_answer"])
-    parser.add_argument("--outdir", type=str, default=r"D:\python\Streamingllm\memory_agent\results\longcodebench\512k", help="Where to save results")
+    parser.add_argument("--data", type=str, default=r"D:\python\Streamingllm\datasets\longcodebench\64K.json", help="Path to dataset")
+    parser.add_argument("--mode", type=str, default="answer_only", choices=["memory_only", "answer_only", "build_and_answer"], help="Processing mode")
+    parser.add_argument("--outdir", type=str, default=r"D:\python\general-agentic-memory\examples\longcodebench\results\64k", help="Output directory")
     parser.add_argument("--max-sessions", type=int, default=5, help="Max sessions retrieved per question")
     parser.add_argument("--sample-idx", type=int, default=-1, help="Run a single sample (0-based). -1 = run all")
     parser.add_argument("--start-idx", type=int, default=0, help="Start index")
-    parser.add_argument("--model-memory", type=str, default="gpt-4o-mini", help="API model for memory processing")
-    parser.add_argument("--model-research", type=str, default="gpt-4o-mini", help="API model for research")
-    parser.add_argument("--model-answer", type=str, default="gpt-4o-mini", help="API model for answering")
-    parser.add_argument("--max-tokens", type=int, default=8096, help="Max tokens per session chunk for memory building")
-    parser.add_argument("--temperature", type=float, default=0.3)
-    parser.add_argument("--sleep", type=float, default=0.1, help="Sleep between requests to avoid rate limits")
-    parser.add_argument("--resume", action="store_true", default=True, help="Resume from existing log")
     parser.add_argument("--limit", type=int, default=0, help="Evaluate first N samples (0 = all)")
+    parser.add_argument("--model-memory", type=str, default="gpt-4o-mini", help="Model for memory processing")
+    parser.add_argument("--model-research", type=str, default="gpt-4o-mini", help="Model for research")
+    parser.add_argument("--model-answer", type=str, default="gpt-4o-mini", help="Model for answering")
+    parser.add_argument("--max-tokens", type=int, default=8096, help="Max tokens per session chunk")
+    parser.add_argument("--temperature", type=float, default=0.3, help="Temperature for generation")
+    parser.add_argument("--sleep", type=float, default=0.1, help="Sleep between requests (seconds)")
+    parser.add_argument("--resume", action="store_true", default=True, help="Resume from existing results")
     
     args = parser.parse_args()
 

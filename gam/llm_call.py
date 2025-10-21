@@ -1,4 +1,16 @@
-class HFModel:
+from abc import ABC, abstractmethod
+
+
+class BaseLLM(ABC):
+    """LLM基类，定义统一的接口"""
+    
+    @abstractmethod
+    def generate(self, message, **kwargs):
+        """生成文本的抽象方法"""
+        pass
+
+
+class HFModel(BaseLLM):
     def __init__(self, model_name, temperature=0.1, top_p=1.0, max_new_tokens=128):
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -24,12 +36,12 @@ class HFModel:
         return self.tokenizer.decode(outputs[0, inputs["input_ids"].shape[1]:], skip_special_tokens=True)
  
 
-class OpenRouterModel:
-    def __init__(self, model="", base_url="", extra_headers=None, extra_body=None, max_retries: int = 3):
+class OpenRouterModel(BaseLLM):
+    def __init__(self, model="openai/gpt-5", base_url="https://api2.aigcbest.top/v1", extra_headers=None, extra_body=None, max_retries: int = 2):
         from openai import OpenAI
         self.client = OpenAI(
             base_url=base_url,
-            api_key='',
+            api_key='sk-zAPn76Ft7DIZcIiB9dj7etnlFOVdeH79jKtSD7To6KJ8khjt',
         )
         self.model = model
         self.max_retries = max_retries

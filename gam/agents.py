@@ -1,128 +1,21 @@
 import json
-import re
-import math
-import collections
-
-from typing import List, Dict, Tuple, Iterable, Optional
+from typing import List, Dict, Tuple, Optional
 
 from tqdm import tqdm
 
-import unicodedata
-from collections import Counter, defaultdict
-
-from llm_call import *  # expects an object with `.generate(prompt: str) -> str`
-from prompts import (
+from .llm_call import BaseLLM
+from .utils import safe_json_extract, build_session_chunks_from_text, build_pages_from_sessions_and_abstracts, tokenize
+from .retrieval import BM25Sessions
+from .prompts import (
     MemoryAgent_PROMPT, 
     SESSION_SUMMARY_PROMPT,
     PLANNING_DEEP_RESEARCH_PROMPT,
-    REPLAN_FROM_SESSIONS_PROMPT
+    REPLAN_FROM_SESSIONS_PROMPT,
+    MEMORY_SUMMARY_PROMPT
 )
 
 
 
-# =============== 工具：安全 JSON 解析（带兜底） ===============
-def _safe_json_extract(text: str) -> dict:
-    if isinstance(text, dict):
-        return text
-    if not isinstance(text, str):
-        return {}
-    try:
-        return json.loads(text)
-    except Exception:
-        m = re.search(r"\{[\s\S]*\}", text)
-        if m:
-            try:
-                return json.loads(m.group(0))
-            except Exception:
-                return {}
-        return {}
-
-
-# =============== 文本预处理 & 简易分词 ===============
-_WORD_RE = re.compile(r"[A-Za-z0-9_]+", re.UNICODE)
-
-def _normalize(s: str) -> str:
-    if not s:
-        return ""
-    s = unicodedata.normalize("NFKC", s)
-    return s
-
-def _tokenize(s: str) -> List[str]:
-    s = _normalize(s).lower()
-    return _WORD_RE.findall(s)
-
-
-# =============== 轻量 BM25（对 sessions 文本做检索） ===============
-class BM25Sessions:
-    def __init__(self, k1: float = 1.5, b: float = 0.75):
-        self.k1 = k1
-        self.b = b
-        self.doc_ids: List[int] = []
-        self.doc_tokens: List[List[str]] = []
-        self.df: Counter = Counter()
-        self.idf: Dict[str, float] = {}
-        self.avgdl: float = 0.0
-        self.N: int = 0
-        self.dl: List[int] = []
-
-    def build(self, documents: List[Tuple[int, str]]):
-        """
-        documents: [(session_id, text), ...]
-        """
-        self.doc_ids.clear()
-        self.doc_tokens.clear()
-        self.df.clear()
-        self.idf.clear()
-        self.dl.clear()
-
-        for sid, text in documents:
-            toks = _tokenize(text or "")
-            self.doc_ids.append(sid)
-            self.doc_tokens.append(toks)
-            self.dl.append(len(toks))
-            for term in set(toks):
-                self.df[term] += 1
-
-        self.N = len(self.doc_ids)
-        self.avgdl = (sum(self.dl) / self.N) if self.N else 0.0
-
-        # 经典 BM25 idf
-        for term, dfi in self.df.items():
-            # 加 0.5 做平滑
-            self.idf[term] = math.log(1 + (self.N - dfi + 0.5) / (dfi + 0.5))
-
-    def _score_query_doc(self, q_terms: List[str], doc_idx: int) -> float:
-        if not q_terms or doc_idx >= len(self.doc_tokens):
-            return 0.0
-        toks = self.doc_tokens[doc_idx]
-        dl = self.dl[doc_idx] if self.dl else 0
-        tf = Counter(toks)
-        score = 0.0
-        for t in q_terms:
-            if t not in self.idf:
-                continue
-            f = tf.get(t, 0)
-            if f == 0:
-                continue
-            idf = self.idf[t]
-            denom = f + self.k1 * (1 - self.b + self.b * (dl / (self.avgdl + 1e-9)))
-            score += idf * (f * (self.k1 + 1)) / (denom + 1e-9)
-        return score
-
-    def search(self, query_terms: List[str], topk: int = 10) -> List[int]:
-        if not self.N or not query_terms:
-            return []
-        q_terms = [t for t in query_terms if t in self.idf]
-        if not q_terms:
-            # 若所有 query 词在索引外，直接返回空
-            return []
-        scored = []
-        for i in range(self.N):
-            s = self._score_query_doc(q_terms, i)
-            if s > 0:
-                scored.append((s, self.doc_ids[i]))
-        scored.sort(reverse=True)
-        return [sid for s, sid in scored[:topk]]
 
 # ------------------------------
 # MemoryAgent
@@ -178,13 +71,18 @@ class MemoryAgent:
                     output_json = {"events": []}
 
         new_events: List[Dict] = output_json.get("events", []) or []
+        new_abstract: str = output_json.get("abstract", "") or ""
+        
         merged = list(historical_events)
         for i, ev in enumerate(new_events):
             if "id" not in ev:
                 ev["id"] = self._next_event_id(historical_events, i)
             merged.append(ev)
 
-        current_state_json = {"events": merged}
+        current_state_json = {
+            "events": merged,
+            "abstract": new_abstract
+        }
         current_state_str = json.dumps(current_state_json, ensure_ascii=False, indent=2)
 
 
@@ -222,6 +120,45 @@ class MemoryAgent:
         except Exception:
             return {"events": []}
 
+    def get_session_abstracts(self) -> List[str]:
+        """
+        获取所有session的abstracts
+        
+        Returns:
+            List[str]: 每个session对应的abstract列表
+        """
+        abstracts = []
+        for history_item in self.memory_history:
+            try:
+                output = history_item.get("output")
+                if isinstance(output, str):
+                    data = json.loads(output)
+                else:
+                    data = output or {}
+                
+                abstract = data.get("abstract", "")
+                abstracts.append(abstract)
+            except Exception:
+                abstracts.append("")
+        
+        return abstracts
+
+    def get_memory_with_abstracts(self) -> dict:
+        """
+        获取完整的记忆状态，包括events和session_abstracts
+        
+        Returns:
+            dict: 包含events和session_abstracts的完整记忆状态
+        """
+        final_memory = self.get_final_memory_output()
+        session_abstracts = self.get_session_abstracts()
+        
+        return {
+            "events": final_memory.get("events", []),
+            "abstract": final_memory.get("abstract", ""),
+            "session_abstracts": session_abstracts
+        }
+
 
 
 
@@ -244,30 +181,25 @@ class DeepResearchAgent:
         self.decided_useful_sessions: List[int] = []  # 汇总 keep 的 session_id
 
 
-    def _build_index_from_sessions(self, sessions: list):
+    def _build_index_from_pages(self, pages: List[str]):
+        """
+        从已经构建好的pages构建索引
+        pages: List[str] - 已经格式化的page内容列表
+        """
         docs: List[Tuple[int, str]] = []
         self._session_map.clear()        
 
-        if not sessions:
+        if not pages:
             self.search_index.build(docs)
             self._index_built = True
             return
 
-
-        if sessions and isinstance(sessions[0], dict):
-            for item in sessions:
-                sid = int(item.get("session_id"))
-                txt = item.get("session_text", "") or item.get("text", "")
-                if not txt:
-                    continue
-                self._session_map[sid] = txt
-                docs.append((sid, txt))
-        else:
-            for i, txt in enumerate(sessions, start=1):
-                if not txt:
-                    continue
-                self._session_map[i] = txt
-                docs.append((i, txt))
+        # 直接使用pages构建索引
+        for i, page_content in enumerate(pages, start=1):
+            if not page_content.strip():
+                continue
+            self._session_map[i] = page_content
+            docs.append((i, page_content))
 
         self.search_index.build(docs)
         self._index_built = True
@@ -275,13 +207,12 @@ class DeepResearchAgent:
 
 
     def _planning_gate(self, question: str, memory: str = "", working_notes: Optional[List[Dict]] = None) -> dict:
-        from prompts import PLANNING_DEEP_RESEARCH_PROMPT
         prompt = (PLANNING_DEEP_RESEARCH_PROMPT
                   + "\nQUESTION:\n" + str(question)
                   + "\nMEMORY:\n" + (memory or "")
                   + "\nWORKING_NOTES:\n" + json.dumps(working_notes or [], ensure_ascii=False))
         raw = self.llm.generate(prompt)
-        data = _safe_json_extract(raw)
+        data = safe_json_extract(raw)
         if not isinstance(data, dict):
             data = {
                 "need_search": True,
@@ -330,7 +261,7 @@ class DeepResearchAgent:
             return []
         q_terms = []
         for kw in keywords or []:
-            q_terms.extend(_tokenize(kw))
+            q_terms.extend(tokenize(kw))
         q_terms = list(dict.fromkeys(q_terms))[:12]
         if not q_terms:
             return []
@@ -354,7 +285,6 @@ class DeepResearchAgent:
 
 
     def _reflection(self, memory: str, question: str, ctx_session_ids: List[int], working_notes: List[Dict]) -> Tuple[bool, dict]:
-        from prompts import REPLAN_FROM_SESSIONS_PROMPT
         snippets = []
         for sid in ctx_session_ids[:6]:
             txt = self._session_map.get(sid, "") or ""
@@ -366,7 +296,7 @@ class DeepResearchAgent:
                   + "\nWORKING_NOTES:\n" + json.dumps(working_notes or [], ensure_ascii=False)
                   + "\nSESSIONS_SNIPPETS:\n" + json.dumps(snippets, ensure_ascii=False))
         raw = self.llm.generate(prompt)
-        data = _safe_json_extract(raw)
+        data = safe_json_extract(raw)
 
         if not isinstance(data, dict):
             return False, {
@@ -412,7 +342,6 @@ class DeepResearchAgent:
 
 
     def _summarize_sessions(self, question: str, session_ids: List[int]) -> dict:
-        from prompts import SESSION_SUMMARY_PROMPT
         sessions_data = []
         for sid in session_ids:
             txt = self._session_map.get(sid, "")
@@ -423,7 +352,7 @@ class DeepResearchAgent:
                   + "\nQUESTION:\n" + str(question)
                   + "\nRETRIEVED_SESSIONS:\n" + json.dumps(sessions_data, ensure_ascii=False))
         raw = self.llm.generate(prompt)
-        data = _safe_json_extract(raw)
+        data = safe_json_extract(raw)
 
         if isinstance(data, dict):
             return {
@@ -438,12 +367,11 @@ class DeepResearchAgent:
 
 
     def _summarize_memory(self, question: str, memory: str) -> dict:
-        from prompts import MEMORY_SUMMARY_PROMPT
         prompt = (MEMORY_SUMMARY_PROMPT
                   + "\nQUESTION:\n" + str(question)
                   + "\nMEMORY:\n" + str(memory))
         raw = self.llm.generate(prompt)
-        data = _safe_json_extract(raw)
+        data = safe_json_extract(raw)
 
         if isinstance(data, dict):
             return {
@@ -509,12 +437,12 @@ class DeepResearchAgent:
         return merged
 
 
-    def deep_research(self, question: str, memory: dict, sessions: List[Dict], max_sessions: int = 8) -> dict:
+    def deep_research(self, question: str, memory: dict, pages: List[str], max_sessions: int = 8) -> dict:
         """
         参数：
           - question: 用户问题
           - memory: MemoryAgent 最终状态（dict 或 str）
-          - sessions: [{"session_id": int, "session_text": str}, ...] 或 纯文本列表
+          - pages: 已经构建好的page列表，格式为 "ABSTRACT: ...\n\nCONTENT: ..."
         返回：
           {
             "summary": str,
@@ -527,7 +455,8 @@ class DeepResearchAgent:
         # 1) 索引构建
         memory_str = memory if isinstance(memory, str) else json.dumps(memory or {}, ensure_ascii=False)
         
-        self._build_index_from_sessions(sessions)
+        # 直接使用pages构建索引
+        self._build_index_from_pages(pages)
 
         # 2) 初次 Planning
         plan = self._planning_gate(question, memory_str, self.working_notes)

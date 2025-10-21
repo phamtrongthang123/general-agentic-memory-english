@@ -64,9 +64,15 @@ general-agentic-memory/
 ├── gam/                          # 核心 GAM 包
 │   ├── __init__.py              # 包初始化文件
 │   ├── agents.py                # 智能代理实现 (MemoryAgent, DeepResearchAgent)
-│   ├── llm_call.py              # LLM 调用接口 (OpenRouter, HuggingFace)
-│   └── prompts.py               # 提示词模板
-├── examples/                     # 示例和基准测试
+│   ├── llm_call.py              # LLM 调用接口 (BaseLLM, OpenRouter, HuggingFace)
+│   ├── prompts.py               # 提示词模板
+│   ├── retrieval.py             # 检索功能 (BM25Sessions)
+│   └── utils.py                 # 工具函数 (文本处理、分块等)
+├── examples/                     # 使用示例
+│   └── quickstart/              # 快速开始示例
+│       ├── basic_usage.py       # 基础使用示例
+│       └── model_usage.py       # 模型选择示例
+├── eval/                        # 基准测试评估
 │   ├── hotpotqa/                # HotpotQA 基准测试
 │   │   └── hotpotqa.py
 │   ├── locomo/                  # LoCoMo 基准测试
@@ -78,9 +84,10 @@ general-agentic-memory/
 │       └── longcodebenchqa.py
 ├── assets/                      # 资源文件
 │   └── GAM-memory.png
+├── docs/                        # 文档目录
 ├── setup.py                     # 安装配置
 ├── pyproject.toml              # 现代项目配置
-├── requiremets.txt             # 依赖列表
+├── requirements.txt             # 依赖列表
 └── README.md                   # 项目说明
 ```
 

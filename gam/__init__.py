@@ -7,8 +7,18 @@ General Agentic Memory (GAM) - 通用智能记忆系统
 - 多种LLM后端支持（OpenRouter、HuggingFace等）
 """
 
-from .agents import MemoryAgent, DeepResearchAgent, RetrievalAgent
-from .llm_call import OpenRouterModel, HFModel
+from .agents import (
+    MemoryAgent, 
+    DeepResearchAgent
+)
+from .llm_call import BaseLLM, OpenRouterModel, HFModel
+from .utils import (
+    safe_json_extract,
+    build_session_chunks_from_text,
+    build_pages_from_sessions_and_abstracts,
+    tokenize
+)
+from .retrieval import BM25Sessions
 from .prompts import (
     MemoryAgent_PROMPT,
     SESSION_SUMMARY_PROMPT,
@@ -23,9 +33,14 @@ __email__ = "your.email@example.com"
 __all__ = [
     "MemoryAgent",
     "DeepResearchAgent", 
-    "RetrievalAgent",
+    "BaseLLM",
     "OpenRouterModel",
     "HFModel",
+    "safe_json_extract",
+    "build_session_chunks_from_text",
+    "build_pages_from_sessions_and_abstracts",
+    "tokenize",
+    "BM25Sessions",
     "MemoryAgent_PROMPT",
     "SESSION_SUMMARY_PROMPT",
     "PLANNING_DEEP_RESEARCH_PROMPT",
