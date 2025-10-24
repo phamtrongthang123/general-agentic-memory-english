@@ -10,6 +10,9 @@
 
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional, Protocol
 
@@ -50,14 +53,14 @@ class ToolResult(BaseModel):
 
 class Hit(BaseModel):
     """Search result hit"""
-    page_index: Optional[int] = Field(None, description="Page index in store")
+    page_id: Optional[str] = Field(None, description="Page ID in store")
     snippet: str = Field(..., description="Text snippet from the source")
     source: str = Field(..., description="Source type (keyword/vector/page_index/tool)")
     meta: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
 class SourceInfo(BaseModel):
     """Source information"""
-    page_index: Optional[int] = Field(None, description="Page index in store")
+    page_id: Optional[str] = Field(None, description="Page ID in store")
     snippet: str = Field(..., description="Text snippet from the source")
     source: str = Field(..., description="Source type")
 
@@ -97,8 +100,8 @@ class PageStore(Protocol):
 class Retriever(Protocol):
     """Unified interface for keyword / vector / page-id retrievers."""
     name: str
-    def build(self, pages: List[Page]) -> None: ...
-    def search(self, query: str, top_k: int = 10) -> List[Hit]: ...
+    def build(self, page_store) -> None: ...
+    def search(self, query_list: List[str], top_k: int = 10) -> List[List[Hit]]: ...
 
 class Tool(Protocol):
     name: str
@@ -112,30 +115,97 @@ class ToolRegistry(Protocol):
 # =============================
 
 class InMemoryMemoryStore:
-    def __init__(self, init_state: Optional[MemoryState] = None) -> None:
+    def __init__(self, dir_path: Optional[str] = None, init_state: Optional[MemoryState] = None) -> None:
+        self._dir_path = Path(dir_path) if dir_path else None
         self._state = init_state or MemoryState()
+        if self._dir_path:
+            self._memory_file = self._dir_path / "memory_state.json"
+            # 如果目录存在，尝试加载现有状态
+            if self._memory_file.exists():
+                self._state = self.load()
 
     def load(self) -> MemoryState:
+        if self._dir_path and self._memory_file.exists():
+            try:
+                with open(self._memory_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    return MemoryState(**data)
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                print(f"Warning: Failed to load memory state from {self._memory_file}: {e}")
+                return MemoryState()
         return self._state
 
     def save(self, state: MemoryState) -> None:
         self._state = state
+        if self._dir_path:
+            # 确保目录存在
+            self._dir_path.mkdir(parents=True, exist_ok=True)
+            try:
+                with open(self._memory_file, 'w', encoding='utf-8') as f:
+                    json.dump(state.model_dump(), f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"Warning: Failed to save memory state to {self._memory_file}: {e}")
 
     def add(self, abstract: str) -> None:
         """Add a new abstract to memory if it doesn't already exist."""
         if abstract and abstract not in self._state.abstracts:
             self._state.abstracts.append(abstract)
+            # 自动保存到文件
+            if self._dir_path:
+                self.save(self._state)
 
 class InMemoryPageStore:
     """
     Simple append-only list store for Page.
-    Uses index-based access.
+    Uses index-based access with file system persistence.
     """
-    def __init__(self) -> None:
+    def __init__(self, dir_path: Optional[str] = None) -> None:
+        self._dir_path = Path(dir_path) if dir_path else None
         self._pages: List[Page] = []
+        if self._dir_path:
+            self._pages_file = self._dir_path / "pages.json"
+            # 如果文件存在，尝试加载现有页面
+            if self._pages_file.exists():
+                self._load_pages()
+
+    def _load_pages(self) -> None:
+        """从文件系统加载所有页面"""
+        if not self._dir_path or not self._pages_file.exists():
+            return
+        
+        try:
+            with open(self._pages_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # 假设存储的是页面列表
+                if isinstance(data, list):
+                    self._pages = [Page(**page_data) for page_data in data]
+                else:
+                    # 如果存储的是字典格式，尝试获取pages字段
+                    self._pages = [Page(**page_data) for page_data in data.get('pages', [])]
+        except Exception as e:
+            print(f"Warning: Failed to load pages from {self._pages_file}: {e}")
+
+    def _save_pages(self) -> None:
+        """保存所有页面到文件"""
+        if not self._dir_path:
+            return
+        
+        # 确保目录存在
+        self._dir_path.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            # 将所有页面转换为字典列表
+            pages_data = [page.model_dump() for page in self._pages]
+            with open(self._pages_file, 'w', encoding='utf-8') as f:
+                json.dump(pages_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Warning: Failed to save pages to {self._pages_file}: {e}")
 
     def add(self, page: Page) -> None:
         self._pages.append(page)
+        # 保存到文件系统
+        if self._dir_path:
+            self._save_pages()
 
     def get(self, index: int) -> Optional[Page]:
         if 0 <= index < len(self._pages):

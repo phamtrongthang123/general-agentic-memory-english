@@ -40,11 +40,12 @@ class MemoryAgent:
         memory_store: MemoryStore | None = None,
         page_store: PageStore | None = None,
         llm: Any = None,  # 必须传入LLM实例
+        dir_path: Optional[str] = None,  # 新增：文件系统存储路径
     ) -> None:
         if llm is None:
             raise ValueError("LLM instance is required for MemoryAgent")
-        self.memory_store = memory_store or InMemoryMemoryStore()
-        self.page_store = page_store or InMemoryPageStore()
+        self.memory_store = memory_store or InMemoryMemoryStore(dir_path=dir_path)
+        self.page_store = page_store or InMemoryPageStore(dir_path=dir_path)
         self.llm = llm
 
     # ---- Public ----
@@ -130,22 +131,25 @@ class ResearchAgent:
         retrievers: Optional[Dict[str, Retriever]] = None,
         llm: Any = None,  # 必须传入LLM实例
         max_iters: int = 3,
+        dir_path: Optional[str] = None,  # 新增：文件系统存储路径
     ) -> None:
         if llm is None:
             raise ValueError("LLM instance is required for ResearchAgent")
         self.page_store = page_store
-        self.memory_store = memory_store or InMemoryMemoryStore()
+        self.memory_store = memory_store or InMemoryMemoryStore(dir_path=dir_path)
         self.tools = tool_registry
         self.retrievers = retrievers or {}
         self.llm = llm
         self.max_iters = max_iters
 
         # Build indices upfront (if retrievers are provided)
-        pages = self.page_store.list_all()
-        for r in self.retrievers.values():
+        for name, r in self.retrievers.items():
             try:
-                r.build(pages)
-            except Exception:
+                # 调用 retriever 的 build 方法，传递 page_store
+                r.build(self.page_store)
+                print(f"Successfully built {name} retriever")
+            except Exception as e:
+                print(f"Failed to build {name} retriever: {e}")
                 pass
 
     # ---- Public ----
@@ -238,15 +242,33 @@ class ResearchAgent:
         for tool in plan.tools:
             if tool == "keyword":
                 for query in plan.keyword_collection:
-                    hits.extend(self._search_by_keyword(query, top_k=5))
+                    keyword_results = self._search_by_keyword([query], top_k=5)
+                    # Flatten the results if they come as List[List[Hit]]
+                    if keyword_results and isinstance(keyword_results[0], list):
+                        for result_list in keyword_results:
+                            hits.extend(result_list)
+                    else:
+                        hits.extend(keyword_results)
                     
             elif tool == "vector":
                 for query in plan.vector_queries:
-                    hits.extend(self._search_by_vector(query, top_k=5))
+                    vector_results = self._search_by_vector([query], top_k=5)
+                    # Flatten the results if they come as List[List[Hit]]
+                    if vector_results and isinstance(vector_results[0], list):
+                        for result_list in vector_results:
+                            hits.extend(result_list)
+                    else:
+                        hits.extend(vector_results)
                     
             elif tool == "page_index":
                 if plan.page_indices:
-                    hits.extend(self._search_by_page_index(plan.page_indices))
+                    page_results = self._search_by_page_index(plan.page_indices)
+                    # Flatten the results if they come as List[List[Hit]]
+                    if page_results and isinstance(page_results[0], list):
+                        for result_list in page_results:
+                            hits.extend(result_list)
+                    else:
+                        hits.extend(page_results)
 
         # Integrate search results with LLM
         return self._integrate(hits, temp_memory, question)
@@ -261,7 +283,7 @@ class ResearchAgent:
         for i, hit in enumerate(hits, 1):
             evidence_text.append(f"{i}. [{hit.source}] {hit.snippet}")
             sources.append({
-                "page_index": hit.page_index,
+                "page_id": hit.page_id,
                 "snippet": hit.snippet,
                 "source": hit.source
             })
@@ -283,41 +305,61 @@ class ResearchAgent:
             return temp_memory
 
     # ---- search channels ----
-    def _search_by_keyword(self, query: str, top_k: int = 10) -> List[Hit]:
+    def _search_by_keyword(self, query_list: List[str], top_k: int = 10) -> List[List[Hit]]:
         r = self.retrievers.get("keyword")
         if r is not None:
             try:
-                return r.search(query, top_k=top_k)
-            except Exception:
+                # BM25Retriever 返回 List[List[Hit]]
+                return r.search(query_list, top_k=top_k)
+            except Exception as e:
+                print(f"Error in keyword search: {e}")
                 return []
         # naive fallback: scan pages for substring
-        out: List[Hit] = []
-        q = query.lower()
-        for i, p in enumerate(self.page_store.list_all()):
-            if q in p.content.lower() or q in p.header.lower():
-                snippet = p.content[:200]
-                out.append(Hit(page_index=i, snippet=snippet, source="keyword", meta={}))
-                if len(out) >= top_k:
-                    break
+        out: List[List[Hit]] = []
+        for query in query_list:
+            query_hits: List[Hit] = []
+            q = query.lower()
+            for i, p in enumerate(self.page_store.list_all()):
+                if q in p.content.lower() or q in p.header.lower():
+                    snippet = p.content[:200]
+                    query_hits.append(Hit(page_id=str(i), snippet=snippet, source="keyword", meta={}))
+                    if len(query_hits) >= top_k:
+                        break
+            out.append(query_hits)
         return out
 
-    def _search_by_vector(self, query: str, top_k: int = 10) -> List[Hit]:
+    def _search_by_vector(self, query_list: List[str], top_k: int = 10) -> List[List[Hit]]:
         r = self.retrievers.get("vector")
         if r is not None:
             try:
-                return r.search(query, top_k=top_k)
-            except Exception:
+                return r.search(query_list, top_k=top_k)
+            except Exception as e:
+                print(f"Error in vector search: {e}")
                 return []
         # fallback: none
         return []
 
-    def _search_by_page_index(self, page_indices: List[int]) -> List[Hit]:
+    def _search_by_page_index(self, page_indices: List[int]) -> List[List[Hit]]:
+        r = self.retrievers.get("page_index")
+        if r is not None:
+            try:
+                # IndexRetriever 期望 List[List[str]] 并返回 List[Hit]
+                # 将 page_indices 转换为字符串列表
+                query_indices = [[str(idx) for idx in page_indices]]
+                hits = r.search(query_indices, top_k=len(page_indices))
+                # 将 List[Hit] 包装成 List[List[Hit]]
+                return [hits] if hits else []
+            except Exception as e:
+                print(f"Error in page index search: {e}")
+                return []
+        
+        # fallback: 直接通过 page_store 获取页面
         out: List[Hit] = []
         for idx in page_indices:
             p = self.page_store.get(idx)
             if p:
-                out.append(Hit(page_index=idx, snippet=p.content[:200], source="page_index", meta={}))
-        return out
+                out.append(Hit(page_id=str(idx), snippet=p.content[:200], source="page_index", meta={}))
+        return [out]  # 包装成 List[List[Hit]] 格式
         
 
     # ---- reflection & summarization ----
