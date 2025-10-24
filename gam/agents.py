@@ -11,158 +11,16 @@ Prompts are placeholders.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
-import re
+from typing import Any, Dict, List, Optional, Tuple
 import json
 
 from prompts import MemoryAgent_PROMPT, Planning_PROMPT, Integrate_PROMPT, InfoCheck_PROMPT, GenerateRequests_PROMPT
-from json_schema import PLANNING_SCHEMA, INTEGRATE_SCHEMA, INFO_CHECK_SCHEMA, GENERATE_REQUESTS_SCHEMA
-
-# =============================
-# Core data models
-# =============================
-
-@dataclass
-class MemoryState:
-    """Long-term memory: only abstracts list."""
-    abstracts: List[str] = field(default_factory=list)
-
-
-@dataclass
-class Page:
-    header: str
-    content: str
-    meta: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class MemoryUpdate:
-    new_state: MemoryState
-    new_page: Page
-    debug: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class SearchPlan:
-    info_needs: List[str] = field(default_factory=list)      
-    tools: List[str] = field(default_factory=list)             
-    keyword_collection: List[str] = field(default_factory=list)  
-    vector_queries: List[str] = field(default_factory=list)     
-    page_indices: List[int] = field(default_factory=list)       
-
-
-@dataclass
-class ToolResult:
-    tool: str
-    inputs: Dict[str, Any]
-    outputs: Any
-    error: Optional[str] = None   # None means success; otherwise error info.
-
-
-@dataclass
-class Hit:
-    page_index: Optional[int]       # Index in page_store, None for tool results
-    snippet: str
-    source: str                     # "keyword" | "vector" | "page_index" | "tool:<name>"
-    meta: Dict[str, Any] = field(default_factory=dict)
-
-
-
-
-@dataclass
-class Result:
-    """
-    Temporary memory containing question-relevant information.
-    This is the result of LLM processing search results into relevant memory.
-    """
-    content: str = ""  # The integrated memory content about the question
-    sources: List[Dict[str, Any]] = field(default_factory=list)  # Source references
-
-
-@dataclass
-class ReflectionDecision:
-    enough: bool
-    new_request: Optional[str]
-
-
-@dataclass
-class ResearchOutput:
-    integrated_memory: str
-    raw_memory: Dict[str, Any]
-
-
-# =============================
-# Minimal interfaces / protocols
-# =============================
-
-class MemoryStore(Protocol):
-    def load(self) -> MemoryState: ...
-    def save(self, state: MemoryState) -> None: ...
-    def add(self, abstract: str) -> None: ...
-
-
-class PageStore(Protocol):
-    def add(self, page: Page) -> None: ...
-    def get(self, index: int) -> Optional[Page]: ...
-    def list_all(self) -> List[Page]: ...
-
-
-class Retriever(Protocol):
-    """Unified interface for keyword / vector / page-id retrievers."""
-    name: str
-    def build(self, pages: List[Page]) -> None: ...
-    def search(self, query: str, top_k: int = 10) -> List[Hit]: ...
-
-
-class Tool(Protocol):
-    name: str
-    def run(self, **kwargs) -> ToolResult: ...
-
-
-class ToolRegistry(Protocol):
-    def run_many(self, tool_inputs: Dict[str, Dict[str, Any]]) -> List[ToolResult]: ...
-
-
-# =============================
-# In-memory default stores (for quick start)
-# =============================
-
-class InMemoryMemoryStore:
-    def __init__(self, init_state: Optional[MemoryState] = None) -> None:
-        self._state = init_state or MemoryState()
-
-    def load(self) -> MemoryState:
-        return self._state
-
-    def save(self, state: MemoryState) -> None:
-        self._state = state
-
-    def add(self, abstract: str) -> None:
-        """Add a new abstract to memory if it doesn't already exist."""
-        if abstract and abstract not in self._state.abstracts:
-            self._state.abstracts.append(abstract)
-
-
-class InMemoryPageStore:
-    """
-    Simple append-only list store for Page.
-    Uses index-based access.
-    """
-    def __init__(self) -> None:
-        self._pages: List[Page] = []
-
-    def add(self, page: Page) -> None:
-        self._pages.append(page)
-
-    def get(self, index: int) -> Optional[Page]:
-        if 0 <= index < len(self._pages):
-            return self._pages[index]
-        return None
-
-    def list_all(self) -> List[Page]:
-        return list(self._pages)
-
+from schemas import (
+    MemoryState, Page, MemoryUpdate, SearchPlan, ToolResult, Hit, Result, 
+    ReflectionDecision, ResearchOutput, MemoryStore, PageStore, Retriever, 
+    Tool, ToolRegistry, InMemoryMemoryStore, InMemoryPageStore,
+    PLANNING_SCHEMA, INTEGRATE_SCHEMA, INFO_CHECK_SCHEMA, GENERATE_REQUESTS_SCHEMA
+)
 
 # =============================
 # MemoryAgent
@@ -210,9 +68,11 @@ class MemoryAgent:
         # (3) Persist page
         page = Page(header=header, content=message, meta={"decorated": decorated_new_page})
         self.page_store.add(page)
-        self.memory_store.save(state)
+        
+        # (4) Get updated state after adding abstract
+        updated_state = self.memory_store.load()
 
-        return MemoryUpdate(new_state=state, new_page=page, debug={"decorated_page": decorated_new_page})
+        return MemoryUpdate(new_state=updated_state, new_page=page, debug={"decorated_page": decorated_new_page})
 
     # ---- Internal helpers ----
     def _decorate(self, message: str, memory_state: MemoryState) -> Tuple[str, str, str]:
