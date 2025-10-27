@@ -23,7 +23,7 @@ class DenseRetriever(AbsRetriever):
             trust_remote_code=config.get("trust_remote_code", True),
             query_instruction_for_retrieval=config.get("query_instruction_for_retrieval"),
             use_fp16=config.get("use_fp16", False),
-            devices=config.get("devices", "cuda")
+            devices=config.get("devices", "cuda:0")
         )
 
 
