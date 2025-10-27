@@ -2,7 +2,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Union, Optional, Dict
 
-
 @dataclass
 class OpenAIGeneratorConfig:
     """OpenAI生成器配置"""
@@ -34,4 +33,3 @@ class VLLMGeneratorConfig:
     thread_count: Optional[int] = None
     system_prompt: Optional[str] = None
     timeout: float = 60.0
-

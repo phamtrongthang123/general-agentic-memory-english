@@ -15,13 +15,21 @@ from __future__ import annotations
 from gam.agents import MemoryAgent, ResearchAgent
 
 # Generators
-from gam.generator import AbsGenerator, OpenAIGenerator
+from gam.generator import AbsGenerator, OpenAIGenerator, VLLMGenerator
 
 # Retrievers
-from gam.retriever import (
-    AbsRetriever,
-    IndexRetriever
-)
+from gam.retriever import AbsRetriever, IndexRetriever
+
+# 尝试导入可选检索器
+try:
+    from gam.retriever import BM25Retriever
+except ImportError:
+    BM25Retriever = None  # type: ignore
+
+try:
+    from gam.retriever import DenseRetriever
+except ImportError:
+    DenseRetriever = None  # type: ignore
 
 # Configurations
 from gam.config import (
@@ -40,6 +48,7 @@ from gam.schemas import (
     SearchPlan,
     Hit,
     Result,
+    EnoughDecision,
     ReflectionDecision,
     ResearchOutput,
     InMemoryMemoryStore,
@@ -60,6 +69,8 @@ __all__ = [
     # Retrievers
     "AbsRetriever",
     "IndexRetriever",
+    "BM25Retriever",
+    "DenseRetriever",
     
     # Configurations
     "OpenAIGeneratorConfig",
@@ -75,6 +86,7 @@ __all__ = [
     "SearchPlan",
     "Hit",
     "Result",
+    "EnoughDecision",
     "ReflectionDecision",
     "ResearchOutput",
     "InMemoryMemoryStore",

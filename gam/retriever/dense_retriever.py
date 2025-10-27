@@ -3,11 +3,46 @@ import json
 import numpy as np
 from typing import Dict, Any, List
 from FlagEmbedding import FlagAutoModel
-from FlagEmbedding.abc.evaluation.utils import index as faiss_index
-from FlagEmbedding.abc.evaluation.utils import search
+import faiss
 
 from gam.retriever.base import AbsRetriever
 from gam.schemas import InMemoryPageStore, Hit, Page
+
+
+def _build_faiss_index(embeddings: np.ndarray) -> faiss.Index:
+    """
+    构建 FAISS 索引
+    embeddings: (n, dim) 的 numpy 数组
+    """
+    dimension = embeddings.shape[1]
+    # 使用内积索引（cosine similarity）
+    index = faiss.IndexFlatIP(dimension)
+    # L2 归一化以支持 cosine similarity（复制数组以避免修改原始数据）
+    embeddings_normalized = embeddings.copy()
+    faiss.normalize_L2(embeddings_normalized)
+    index.add(embeddings_normalized)
+    return index
+
+
+def _search_faiss_index(index: faiss.Index, query_embeddings: np.ndarray, top_k: int):
+    """
+    在 FAISS 索引中搜索
+    index: FAISS 索引
+    query_embeddings: (n_queries, dim) 的查询向量
+    top_k: 返回的 top-k 结果数
+    返回: (scores_list, indices_list) 其中每个元素都是 (top_k,) 的数组
+    """
+    # L2 归一化查询向量（复制以避免修改原始数据）
+    query_embeddings_normalized = query_embeddings.copy()
+    faiss.normalize_L2(query_embeddings_normalized)
+    
+    # 搜索
+    scores, indices = index.search(query_embeddings_normalized, top_k)
+    
+    scores_list = [scores[i] for i in range(len(query_embeddings))]
+    indices_list = [indices[i] for i in range(len(query_embeddings))]
+    
+    return scores_list, indices_list
 
 
 class DenseRetriever(AbsRetriever):
@@ -23,7 +58,7 @@ class DenseRetriever(AbsRetriever):
             trust_remote_code=config.get("trust_remote_code", True),
             query_instruction_for_retrieval=config.get("query_instruction_for_retrieval"),
             use_fp16=config.get("use_fp16", False),
-            devices=config.get("devices", "cuda")
+            devices=config.get("devices", "cuda:0")
         )
 
 
@@ -59,7 +94,7 @@ class DenseRetriever(AbsRetriever):
             # 读向量
             self.doc_emb = np.load(self._emb_path())
             # 重建 index
-            self.index = faiss_index(self.doc_emb)
+            self.index = _build_faiss_index(self.doc_emb)
             # 读 pages
             self.pages = InMemoryPageStore.load(self._pages_dir()).load()
         except Exception as e:
@@ -78,10 +113,12 @@ class DenseRetriever(AbsRetriever):
         self.doc_emb = self._encode_pages(self.pages)
 
         # 3. 建 faiss 索引
-        self.index = faiss_index(self.doc_emb)
+        self.index = _build_faiss_index(self.doc_emb)
 
         # 4. 持久化
-        page_store.save(self._pages_dir())
+        # 创建临时 PageStore 实例来保存
+        temp_page_store = InMemoryPageStore(dir_path=self._pages_dir())
+        temp_page_store.save(self.pages)
         np.save(self._emb_path(), self.doc_emb)
 
     def update(self, page_store: InMemoryPageStore) -> None:
@@ -121,14 +158,17 @@ class DenseRetriever(AbsRetriever):
         new_doc_emb = np.concatenate([keep_emb, tail_emb], axis=0)
 
         # 4. 重新建 faiss 索引
-        self.index = faiss_index(new_doc_emb)
+        self.index = _build_faiss_index(new_doc_emb)
 
         # 5. 持久化 + 刷内存
-        page_store.save(self._pages_dir())
-        np.save(self._emb_path(), new_doc_emb)
-
+        # 更新内存
         self.pages = new_pages
         self.doc_emb = new_doc_emb
+        
+        # 创建临时 PageStore 实例来保存
+        temp_page_store = InMemoryPageStore(dir_path=self._pages_dir())
+        temp_page_store.save(self.pages)
+        np.save(self._emb_path(), self.doc_emb)
 
     def search(self, query_list: List[str], top_k: int = 10) -> List[List[Hit]]:
         """
@@ -149,8 +189,8 @@ class DenseRetriever(AbsRetriever):
             max_length=self.config.get("max_length", 512),
         )
 
-        # 用 FlagEmbedding 自带的 search() 查
-        scores_list, indices_list = search(self.index, queries_emb, top_k)
+        # 使用自定义的 search 函数
+        scores_list, indices_list = _search_faiss_index(self.index, queries_emb, top_k)
 
         all_results: List[List[Hit]] = []
         for scores, indices in zip(scores_list, indices_list):
@@ -165,7 +205,7 @@ class DenseRetriever(AbsRetriever):
 
                 hits_for_this_query.append(
                     Hit(
-                        page_id=idx_int,          # 用统一的 int 索引
+                        page_id=str(idx_int),          # 用统一的 int 索引
                         snippet=snippet,
                         source="vector",          # 和 planner/tool 名字保持一致
                         meta={"rank": rank, "score": float(sc)},

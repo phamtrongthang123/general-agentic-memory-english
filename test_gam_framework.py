@@ -18,12 +18,27 @@ from gam import (
     MemoryAgent,
     ResearchAgent,
     OpenAIGenerator,
+    VLLMGenerator,
     InMemoryMemoryStore,
     InMemoryPageStore,
     IndexRetriever,
     OpenAIGeneratorConfig,
+    VLLMGeneratorConfig,
     IndexRetrieverConfig,
+    BM25RetrieverConfig,
+    DenseRetrieverConfig,
+    BM25Retriever,
+    DenseRetriever,
 )
+
+# 检查 BM25 和 Dense Retriever 是否可用
+BM25_AVAILABLE = BM25Retriever is not None
+DENSE_AVAILABLE = DenseRetriever is not None
+
+if not BM25_AVAILABLE:
+    print("[WARN] BM25Retriever 不可用（需要 pyserini 依赖）")
+if not DENSE_AVAILABLE:
+    print("[WARN] DenseRetriever 不可用（需要 FlagEmbedding 依赖）")
 
 
 def test_complete_workflow():
@@ -34,20 +49,29 @@ def test_complete_workflow():
     
     # 1. 创建共享的存储实例
     print("步骤 1: 创建共享存储实例")
-    memory_store = InMemoryMemoryStore(dir_path="./test_memory_output")
-    page_store = InMemoryPageStore(dir_path="./test_memory_output")
+    memory_store = InMemoryMemoryStore(dir_path="/share/project/bingyu/code/general-agentic-memory/gam/test_memory_output")
+    page_store = InMemoryPageStore(dir_path="/share/project/bingyu/code/general-agentic-memory/gam/test_memory_output")
     print("[OK] 存储实例创建完成")
     
     # 2. 创建 LLM Generator
     print("\n步骤 2: 创建 LLM Generator")
-    generator_config = OpenAIGeneratorConfig(
-        model_name="gpt-4o-mini",
-        api_key="sk-UdTVN7RUnJY0jMVM2aUMhSJKGu6nmwYDprWkEltPuDbxMuCR",
-        base_url="https://api2.aigcbest.top/v1",
+    # generator_config = OpenAIGeneratorConfig(
+    #     model_name="gpt-4o-mini",
+    #     api_key="sk-UdTVN7RUnJY0jMVM2aUMhSJKGu6nmwYDprWkEltPuDbxMuCR",
+    #     base_url="https://api2.aigcbest.top/v1",
+    #     temperature=0.3,
+    #     max_tokens=200
+    # )
+
+    generator_config = VLLMGeneratorConfig(
+        model_name="qwen2.5-14b-instruct",
+        api_key="empty",
+        base_url="http://localhost:8000/v1",
         temperature=0.3,
-        max_tokens=200
+        max_tokens=2048
     )
-    generator = OpenAIGenerator(generator_config.__dict__)
+    
+    generator = VLLMGenerator(generator_config.__dict__)
     print("[OK] Generator 创建完成")
     
     # 3. 创建 MemoryAgent（使用共享存储）
@@ -89,15 +113,56 @@ def test_complete_workflow():
     # 索引检索器（不需要额外依赖）
     try:
         index_config = IndexRetrieverConfig(
-            index_dir="./test_memory_output/page_index"
+            index_dir="/share/project/bingyu/code/general-agentic-memory/gam/test_memory_output/page_index"
         )
         index_retriever = IndexRetriever(index_config.__dict__)
+        index_retriever.build(page_store)
         retrievers["page_index"] = index_retriever
         print("[OK] 索引检索器已创建")
     except Exception as e:
         print(f"[WARN] 索引检索器创建失败: {e}")
     
-    print("[INFO] 注意: BM25 和 Dense 检索器需要额外依赖，这里只使用 IndexRetriever")
+    # BM25 检索器
+    if BM25_AVAILABLE:
+        try:
+            print("\n尝试创建 BM25 检索器...")
+            bm25_config = BM25RetrieverConfig(
+                index_dir="/share/project/bingyu/code/general-agentic-memory/gam/test_memory_output/bm25_index",
+                threads=4
+            )
+            bm25_retriever = BM25Retriever(bm25_config.__dict__)
+            bm25_retriever.build(page_store)
+            retrievers["keyword"] = bm25_retriever
+            print("[OK] BM25 检索器已创建")
+        except Exception as e:
+            print(f"[WARN] BM25 检索器创建失败: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("[INFO] BM25 检索器不可用，跳过")
+    
+    # Dense 检索器
+    if DENSE_AVAILABLE:
+        try:
+            print("\n尝试创建 Dense 检索器...")
+            # 使用本地模型 all_minilm_l6_v2
+            dense_config = DenseRetrieverConfig(
+                index_dir="/share/project/bingyu/code/general-agentic-memory/gam/test_memory_output/dense_index",
+                model_name="/share/project/bingyu/models/bge-base-en-v1.5",
+                devices=["cuda:0"]
+            )
+            dense_retriever = DenseRetriever(dense_config.__dict__)
+            dense_retriever.build(page_store)
+            retrievers["vector"] = dense_retriever
+            print("[OK] Dense 检索器已创建")
+        except Exception as e:
+            print(f"[WARN] Dense 检索器创建失败: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("[INFO] Dense 检索器不可用，跳过")
+    
+    print(f"\n[INFO] 成功创建 {len(retrievers)} 个检索器: {list(retrievers.keys())}")
     
     # 7. 创建 ResearchAgent（使用相同的存储和生成器）
     print(f"\n步骤 6: 创建 ResearchAgent")
@@ -168,14 +233,15 @@ def test_load_existing_memory_workflow():
     
     # 2. 创建 LLM Generator
     print(f"\n步骤 2: 创建 LLM Generator")
-    generator_config = OpenAIGeneratorConfig(
-        model_name="gpt-4o-mini",
-        api_key="sk-UdTVN7RUnJY0jMVM2aUMhSJKGu6nmwYDprWkEltPuDbxMuCR",
-        base_url="https://api2.aigcbest.top/v1",
+    generator_config = VLLMGeneratorConfig(
+        model_name="qwen2.5-14b-instruct",
+        api_key="empty",
+        base_url="http://localhost:8000/v1",
         temperature=0.3,
-        max_tokens=200
+        max_tokens=2048
     )
-    generator = OpenAIGenerator(generator_config.__dict__)
+    
+    generator = VLLMGenerator(generator_config.__dict__)
     print("[OK] Generator 创建完成")
     
     # 3. 创建检索器
@@ -188,10 +254,49 @@ def test_load_existing_memory_workflow():
             index_dir="./test_memory_output/page_index"
         )
         index_retriever = IndexRetriever(index_config.__dict__)
+        index_retriever.build(page_store)
         retrievers["page_index"] = index_retriever
         print("[OK] 索引检索器已创建")
     except Exception as e:
         print(f"[WARN] 索引检索器创建失败: {e}")
+    
+    # BM25 检索器
+    if BM25_AVAILABLE:
+        try:
+            print("\n尝试创建 BM25 检索器...")
+            bm25_config = BM25RetrieverConfig(
+                index_dir="./test_memory_output/bm25_index",
+                threads=4
+            )
+            bm25_retriever = BM25Retriever(bm25_config.__dict__)
+            bm25_retriever.build(page_store)
+            retrievers["bm25"] = bm25_retriever
+            print("[OK] BM25 检索器已创建")
+        except Exception as e:
+            print(f"[WARN] BM25 检索器创建失败: {e}")
+    else:
+        print("[INFO] BM25 检索器不可用，跳过")
+    
+    # Dense 检索器
+    if DENSE_AVAILABLE:
+        try:
+            print("\n尝试创建 Dense 检索器...")
+            # 使用本地模型
+            dense_config = DenseRetrieverConfig(
+                index_dir="./test_memory_output/dense_index",
+                model_name="/share/project/bingyu/models/all_minilm_l6_v2",
+                devices="cuda"  # 可以改成 cuda 如果你有 GPU
+            )
+            dense_retriever = DenseRetriever(dense_config.__dict__)
+            dense_retriever.build(page_store)
+            retrievers["dense"] = dense_retriever
+            print("[OK] Dense 检索器已创建")
+        except Exception as e:
+            print(f"[WARN] Dense 检索器创建失败: {e}")
+    else:
+        print("[INFO] Dense 检索器不可用，跳过")
+    
+    print(f"\n[INFO] 成功创建 {len(retrievers)} 个检索器: {list(retrievers.keys())}")
     
     # 4. 创建 ResearchAgent
     print(f"\n步骤 4: 创建 ResearchAgent")

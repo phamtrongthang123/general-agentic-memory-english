@@ -259,6 +259,8 @@ class ResearchAgent:
         Returns Result directly.
         """
         hits: List[Hit] = []
+        # 用于去重：追踪已添加的 page_id
+        added_page_ids = set()
 
         # Execute each planned tool
         for tool in plan.tools:
@@ -268,9 +270,18 @@ class ResearchAgent:
                     # Flatten the results if they come as List[List[Hit]]
                     if keyword_results and isinstance(keyword_results[0], list):
                         for result_list in keyword_results:
-                            hits.extend(result_list)
+                            for hit in result_list:
+                                # 使用 page_id 作为唯一标识
+                                page_id = hit.page_id or "unknown"
+                                if page_id not in added_page_ids:
+                                    hits.append(hit)
+                                    added_page_ids.add(page_id)
                     else:
-                        hits.extend(keyword_results)
+                        for hit in keyword_results:
+                            page_id = hit.page_id or "unknown"
+                            if page_id not in added_page_ids:
+                                hits.append(hit)
+                                added_page_ids.add(page_id)
                     
             elif tool == "vector":
                 for query in plan.vector_queries:
@@ -278,9 +289,17 @@ class ResearchAgent:
                     # Flatten the results if they come as List[List[Hit]]
                     if vector_results and isinstance(vector_results[0], list):
                         for result_list in vector_results:
-                            hits.extend(result_list)
+                            for hit in result_list:
+                                page_id = hit.page_id or "unknown"
+                                if page_id not in added_page_ids:
+                                    hits.append(hit)
+                                    added_page_ids.add(page_id)
                     else:
-                        hits.extend(vector_results)
+                        for hit in vector_results:
+                            page_id = hit.page_id or "unknown"
+                            if page_id not in added_page_ids:
+                                hits.append(hit)
+                                added_page_ids.add(page_id)
                     
             elif tool == "page_index":
                 if plan.page_index:
@@ -288,9 +307,17 @@ class ResearchAgent:
                     # Flatten the results if they come as List[List[Hit]]
                     if page_results and isinstance(page_results[0], list):
                         for result_list in page_results:
-                            hits.extend(result_list)
+                            for hit in result_list:
+                                page_id = hit.page_id or "unknown"
+                                if page_id not in added_page_ids:
+                                    hits.append(hit)
+                                    added_page_ids.add(page_id)
                     else:
-                        hits.extend(page_results)
+                        for hit in page_results:
+                            page_id = hit.page_id or "unknown"
+                            if page_id not in added_page_ids:
+                                hits.append(hit)
+                                added_page_ids.add(page_id)
 
         # Integrate search results with LLM
         return self._integrate(hits, result, question)
@@ -329,7 +356,7 @@ class ResearchAgent:
             return result
 
     # ---- search channels ----
-    def _search_by_keyword(self, query_list: List[str], top_k: int = 10) -> List[List[Hit]]:
+    def _search_by_keyword(self, query_list: List[str], top_k: int = 5) -> List[List[Hit]]:
         r = self.retrievers.get("keyword")
         if r is not None:
             try:

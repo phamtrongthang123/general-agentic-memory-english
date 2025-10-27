@@ -1,6 +1,10 @@
 import os, json, subprocess, shutil
 from typing import Dict, Any, List
-from pyserini.search.lucene import LuceneSearcher
+
+try:
+    from pyserini.search.lucene import LuceneSearcher
+except ImportError:
+    LuceneSearcher = None  # type: ignore
 
 from gam.retriever.base import AbsRetriever
 from gam.schemas import InMemoryPageStore, Hit, Page
@@ -18,6 +22,8 @@ class BM25Retriever(AbsRetriever):
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
+        if LuceneSearcher is None:
+            raise ImportError("BM25Retriever requires pyserini to be installed")
         self.index_dir = self.config["index_dir"]
         self.searcher: LuceneSearcher | None = None
         self.pages: List[Page] = []
@@ -36,7 +42,7 @@ class BM25Retriever(AbsRetriever):
         if not os.path.exists(self._lucene_dir()):
             raise RuntimeError("BM25 index not found, need build() first.")
         self.pages = InMemoryPageStore.load(self._pages_dir()).load()
-        self.searcher = LuceneSearcher(self._lucene_dir())
+        self.searcher = LuceneSearcher(self._lucene_dir())  # type: ignore
 
     def build(self, page_store: InMemoryPageStore) -> None:
         os.makedirs(self.index_dir, exist_ok=True)
@@ -69,11 +75,13 @@ class BM25Retriever(AbsRetriever):
         subprocess.run(cmd, check=True)
 
         # 4. 把 pages 也固化到磁盘，供 load() / search() 反查
-        page_store.save(self._pages_dir())
-
+        # 创建临时 PageStore 实例来保存
+        temp_page_store = InMemoryPageStore(dir_path=self._pages_dir())
+        temp_page_store.save(pages)
+        
         # 5. 更新内存镜像
         self.pages = pages
-        self.searcher = LuceneSearcher(self._lucene_dir())
+        self.searcher = LuceneSearcher(self._lucene_dir())  # type: ignore
 
     def update(self, page_store: InMemoryPageStore) -> None:
         # Lucene 没有好用的“增量追加+可删改文档”的轻量接口（有但复杂）；
@@ -103,10 +111,9 @@ class BM25Retriever(AbsRetriever):
                 snippet = (page.header + " " + page.content)[:500]
                 hits_for_q.append(
                     Hit(
-                        page_id=idx,
+                        page_id=str(idx),
                         snippet=snippet,
                         source="keyword",
-                        score=float(h.score),
                         meta={"rank": rank, "score": float(h.score)}
                     )
                 )

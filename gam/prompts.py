@@ -42,6 +42,12 @@ QUESTION:
 MEMORY:
 {memory}
 
+Tools Introduction:
+"keyword": 
+"vector":
+"page_index":  
+
+
 PLANNING PROCEDURE:
 1. Break the QUESTION into specific sub-questions / info needs.
 2. For each info need, decide what kind of retrieval is best:
