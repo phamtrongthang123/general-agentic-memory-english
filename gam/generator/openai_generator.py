@@ -33,33 +33,6 @@ class OpenAIGenerator(AbsGenerator):
         if self.base_url is not None:
             os.environ["OPENAI_BASE_URL"] = self.base_url
 
-    def _fix_schema_for_openai(self, schema: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        修复 schema 以符合 OpenAI API 要求
-        添加 additionalProperties: false 到所有对象类型
-        """
-        def fix_schema_recursive(obj: Any) -> Any:
-            if isinstance(obj, dict):
-                fixed_obj = obj.copy()
-                # 如果是对象类型，添加 additionalProperties: false
-                if fixed_obj.get("type") == "object":
-                    fixed_obj["additionalProperties"] = False
-                # 递归处理 properties
-                if "properties" in fixed_obj:
-                    fixed_obj["properties"] = {
-                        key: fix_schema_recursive(value) 
-                        for key, value in fixed_obj["properties"].items()
-                    }
-                # 递归处理 items (数组元素)
-                if "items" in fixed_obj:
-                    fixed_obj["items"] = fix_schema_recursive(fixed_obj["items"])
-                return fixed_obj
-            elif isinstance(obj, list):
-                return [fix_schema_recursive(item) for item in obj]
-            else:
-                return obj
-        
-        return fix_schema_recursive(schema)
 
     def generate_single(
         self,
@@ -89,13 +62,11 @@ class OpenAIGenerator(AbsGenerator):
         # 构造 response_format
         response_format = None
         if schema is not None:
-            # 确保 schema 符合 OpenAI API 要求
-            fixed_schema = self._fix_schema_for_openai(schema)
             response_format = {
                 "type": "json_schema",
                 "json_schema": {
                     "name": "auto_schema",
-                    "schema": fixed_schema,
+                    "schema": schema,
                     "strict": True
                 }
             }

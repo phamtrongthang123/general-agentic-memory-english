@@ -53,14 +53,22 @@ PLANNING PROCEDURE:
    - "tools": list of retrieval channels you will actually use. Only use values from ["keyword","vector","page_index"]. You can use more than one at a time.
    - "keyword_collection": list of exact entities for retrieval.
    - "vector_queries": list of 1-3 natural-language semantic queries that include full context.
-   - "page_index": list of integer page indices (e.g. [0,3,5]) if we already know those pages are relevant; otherwise [].
+   - "page_index": list of integer page indices (e.g. [0,3,5]) if already know those pages are relevant.
 
 RULES:
 - Be specific. Avoid vague stuff like "get more info".
 - If you don't plan to use a retrieval type, do NOT include it in "tools".
 - Do NOT hallucinate page numbers.
 
-Do NOT add explanations, comments, or Markdown outside JSON.
+OUTPUT JSON SPEC:
+Return ONE JSON object with EXACTLY these keys:
+- "info_needs": array of strings (required; [] if none)
+- "tools": array of strings from ["keyword","vector","page_index"] (required; [] if none)
+- "keyword_collection": array of strings (required; [] if none)
+- "vector_queries": array of strings (required; [] if none)
+- "page_index": array of integers (required; [] if unknown)
+
+All keys MUST appear even when empty. Do NOT include any extra keys.
 """
 
 Integrate_PROMPT = """
@@ -97,6 +105,13 @@ RULES:
 - Do NOT invent information that is not in CURRENT RESULT or EVIDENCE_CONTEXT.
 - Do NOT include any keys other than "content" and "sources".
 - Do NOT add Markdown, comments, or any text outside the single JSON object.
+
+OUTPUT JSON SPEC:
+Return ONE JSON object with EXACTLY:
+- "content": string (required; "" if truly nothing to add)
+- "sources": array of strings/objects (required; [] if none)
+
+Both keys MUST be present. No extra keys.
 """
 
 InfoCheck_PROMPT = """

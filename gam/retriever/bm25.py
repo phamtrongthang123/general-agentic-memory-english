@@ -35,7 +35,7 @@ class BM25Retriever(AbsRetriever):
         # 尝试从磁盘恢复
         if not os.path.exists(self._lucene_dir()):
             raise RuntimeError("BM25 index not found, need build() first.")
-        self.pages = InMemoryPageStore.load(self._pages_dir()).list_all()
+        self.pages = InMemoryPageStore.load(self._pages_dir()).load()
         self.searcher = LuceneSearcher(self._lucene_dir())
 
     def build(self, page_store: InMemoryPageStore) -> None:
@@ -43,7 +43,7 @@ class BM25Retriever(AbsRetriever):
         os.makedirs(self._docs_dir(), exist_ok=True)
 
         # 1. dump pages -> documents.jsonl (pyserini需要 id + contents)
-        pages = page_store.list_all()
+        pages = page_store.load()
         docs_path = os.path.join(self._docs_dir(), "documents.jsonl")
         with open(docs_path, "w", encoding="utf-8") as f:
             for i, p in enumerate(pages):

@@ -48,6 +48,15 @@ class SearchPlan(BaseModel):
     keyword_collection: List[str] = Field(default_factory=list, description="Keywords to search for")
     vector_queries: List[str] = Field(default_factory=list, description="Semantic search queries")
     page_index: List[int] = Field(default_factory=list, description="Specific page indices to retrieve")
+    
+    @classmethod
+    def model_json_schema(cls) -> Dict[str, Any]:
+        schema = super().model_json_schema()
+        # 严格模式下 required 必须包含所有属性
+        props = list(schema.get("properties", {}).keys())
+        schema["required"] = props
+        schema["additionalProperties"] = False
+        return schema
 
 class ToolResult(BaseModel):
     """Tool execution result"""
@@ -67,11 +76,27 @@ class Result(BaseModel):
     """Search and integration result"""
     content: str = Field("", description="Integrated content about the question")
     sources: List[Optional[str]] = Field(default_factory=list, description="List of page IDs of sources used")
+    
+    @classmethod
+    def model_json_schema(cls) -> Dict[str, Any]:
+        schema = super().model_json_schema()
+        props = list(schema.get("properties", {}).keys())  # ["content", "sources"]
+        schema["required"] = props
+        schema["additionalProperties"] = False
+        return schema
 
 class ReflectionDecision(BaseModel):
     """Reflection decision"""
     enough: bool = Field(..., description="Whether information is sufficient")
-    new_request: Optional[str] = Field(None, description="New request if information is insufficient")
+    
+    @classmethod
+    def model_json_schema(cls) -> Dict[str, Any]:
+        """生成符合 OpenAI API 要求的 JSON Schema"""
+        schema = super().model_json_schema()
+        # ReflectionDecision 只有 enough 字段是必需的
+        schema["required"] = ["enough"]
+        schema["additionalProperties"] = False
+        return schema
 
 class ResearchOutput(BaseModel):
     """Research output"""
@@ -81,6 +106,15 @@ class ResearchOutput(BaseModel):
 class GenerateRequests(BaseModel):
     """Generate new requests"""
     new_requests: List[str] = Field(..., description="List of new search requests")
+    
+    @classmethod
+    def model_json_schema(cls) -> Dict[str, Any]:
+        """生成符合 OpenAI API 要求的 JSON Schema"""
+        schema = super().model_json_schema()
+        # GenerateRequests 只有 new_requests 字段是必需的
+        schema["required"] = ["new_requests"]
+        schema["additionalProperties"] = False
+        return schema
 
 # =============================
 # Protocols (Interface definitions)

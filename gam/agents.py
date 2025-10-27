@@ -196,7 +196,7 @@ class ResearchAgent:
     def _update_retrievers(self):
         """确保检索器索引是最新的"""
         # 检查是否有新的页面需要更新索引
-        current_page_count = len(self.page_store.list_all())
+        current_page_count = len(self.page_store.load())
         
         # 如果页面数量发生变化，更新所有检索器索引
         if hasattr(self, '_last_page_count') and current_page_count != self._last_page_count:
@@ -338,7 +338,7 @@ class ResearchAgent:
         for query in query_list:
             query_hits: List[Hit] = []
             q = query.lower()
-            for i, p in enumerate(self.page_store.list_all()):
+            for i, p in enumerate(self.page_store.load()):
                 if q in p.content.lower() or q in p.header.lower():
                     snippet = p.content[:200]
                     query_hits.append(Hit(page_id=str(i), snippet=snippet, source="keyword", meta={}))

@@ -61,7 +61,7 @@ class DenseRetriever(AbsRetriever):
             # 重建 index
             self.index = faiss_index(self.doc_emb)
             # 读 pages
-            self.pages = InMemoryPageStore.load(self._pages_dir()).list_all()
+            self.pages = InMemoryPageStore.load(self._pages_dir()).load()
         except Exception as e:
             print("DenseRetriever.load() failed, will need build():", e)
 
@@ -72,7 +72,7 @@ class DenseRetriever(AbsRetriever):
         os.makedirs(self._pages_dir(), exist_ok=True)
 
         # 1. 把当前 page_store 取出来
-        self.pages = page_store.list_all()
+        self.pages = page_store.load()
 
         # 2. 全量编码
         self.doc_emb = self._encode_pages(self.pages)
@@ -94,7 +94,7 @@ class DenseRetriever(AbsRetriever):
             self.build(page_store)
             return
 
-        new_pages = page_store.list_all()
+        new_pages = page_store.load()
         old_pages = self.pages
 
         # 1. 找到第一个差异位置 diff_idx
