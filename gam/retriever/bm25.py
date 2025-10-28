@@ -108,7 +108,7 @@ class BM25Retriever(AbsRetriever):
                 if idx < 0 or idx >= len(self.pages):
                     continue
                 page = self.pages[idx]
-                snippet = (page.header + " " + page.content)[:500]
+                snippet = page.content
                 hits_for_q.append(
                     Hit(
                         page_id=str(idx),

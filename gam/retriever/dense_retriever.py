@@ -201,7 +201,7 @@ class DenseRetriever(AbsRetriever):
                 if idx_int < 0 or idx_int >= len(self.pages):
                     continue
                 page = self.pages[idx_int]
-                snippet = (page.header + " " + page.content)[:200]
+                snippet = page.content
 
                 hits_for_this_query.append(
                     Hit(

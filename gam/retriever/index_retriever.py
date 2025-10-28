@@ -47,7 +47,7 @@ class IndexRetriever(AbsRetriever):
                     continue
                 hits.append(Hit(
                     page_id=str(pid),  # 使用页面索引作为page_id
-                    snippet=p.content[:200],
+                    snippet=p.content,
                     source="page_index",
                     meta={}
                 ))
