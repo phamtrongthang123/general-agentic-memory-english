@@ -36,8 +36,8 @@
 
 ## 📣 最新动态
 
-- **2024-01**: 发布 GAM 框架及模块化评估套件
-- **2024-01**: 支持 HotpotQA、NarrativeQA、LoCoMo 和 RULER 基准测试
+- **2025-11**: 发布 GAM 框架及模块化评估套件
+- **2025-11**: 支持 HotpotQA、NarrativeQA、LoCoMo 和 RULER 基准测试
 
 ## 📑 目录
 

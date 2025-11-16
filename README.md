@@ -36,8 +36,8 @@ A general memory system for agents, powered by deep-research
 
 ## 📣 Latest News
 
-- **2024-01**: Released GAM framework with modular evaluation suite
-- **2024-01**: Support for HotpotQA, NarrativeQA, LoCoMo, and RULER benchmarks
+- **2025-11**: Released GAM framework with modular evaluation suite
+- **2025-11**: Support for HotpotQA, NarrativeQA, LoCoMo, and RULER benchmarks
 
 ## 📑 Table of Contents
 
@@ -282,12 +282,6 @@ More detailed documentation is coming soon 🚀. Check these resources in the me
 **If you find this project useful, please consider citing our paper:**
 
 ```bibtex
-@article{gam2024,
-  title={General Agentic Memory: Just-in-Time Memory for AI Agents},
-  author={Your Name},
-  journal={arXiv preprint},
-  year={2024}
-}
 ```
 
 <span id='community'/>
