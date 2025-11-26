@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-安装脚本
+Installation script
 """
 
 from setuptools import setup, find_packages
@@ -17,7 +17,7 @@ setup(
     version="1.0.0",
     author="Your Name",
     author_email="your.email@example.com",
-    description="基于记忆代理架构的统一多数据集问答系统",
+    description="Unified multi-dataset question-answering system based on memory agent architecture",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/yourusername/general-agentic-memory",

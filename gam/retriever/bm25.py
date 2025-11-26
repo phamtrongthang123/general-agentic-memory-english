@@ -12,12 +12,12 @@ from gam.schemas import InMemoryPageStore, Hit, Page
 
 def _safe_rmtree(path: str, max_retries: int = 3, delay: float = 0.5) -> None:
     """
-    安全地删除目录树，带重试机制
-    
+    Safely remove directory tree with retry mechanism
+
     Args:
-        path: 要删除的目录路径
-        max_retries: 最大重试次数
-        delay: 重试间隔（秒）
+        path: Directory path to remove
+        max_retries: Maximum number of retries
+        delay: Retry interval (seconds)
     """
     if not os.path.exists(path):
         return
@@ -25,31 +25,31 @@ def _safe_rmtree(path: str, max_retries: int = 3, delay: float = 0.5) -> None:
     for attempt in range(max_retries):
         try:
             shutil.rmtree(path)
-            # 确保目录真的被删除了
+            # Ensure directory is actually deleted
             if not os.path.exists(path):
                 return
             time.sleep(delay)
         except OSError as e:
             if attempt == max_retries - 1:
-                # 最后一次尝试仍然失败，强制删除
+                # Last attempt still failed, force deletion
                 try:
-                    # 尝试更激进的删除方式
+                    # Try more aggressive deletion method
                     import subprocess
                     subprocess.run(['rm', '-rf', path], check=False, capture_output=True)
                     if not os.path.exists(path):
                         return
                 except Exception:
                     pass
-                raise OSError(f"无法删除目录 {path}: {e}")
+                raise OSError(f"Unable to delete directory {path}: {e}")
             time.sleep(delay)
 
 
 class BM25Retriever(AbsRetriever):
     """
-        关键词检索器 (BM25 / Lucene)
-        config 需要:
+        Keyword retriever (BM25 / Lucene)
+        config requires:
         {
-            "index_dir": "xxx",   # 用来放 index/ 和 pages/
+            "index_dir": "xxx",   # Directory for index/ and pages/
             "threads": 4
         }
     """
@@ -72,23 +72,23 @@ class BM25Retriever(AbsRetriever):
         return os.path.join(self.index_dir, "documents")
 
     def load(self) -> None:
-        # 尝试从磁盘恢复
+        # Try to restore from disk
         if not os.path.exists(self._lucene_dir()):
             raise RuntimeError("BM25 index not found, need build() first.")
         self.pages = InMemoryPageStore.load(self._pages_dir()).load()
         self.searcher = LuceneSearcher(self._lucene_dir())  # type: ignore
 
     def build(self, page_store: InMemoryPageStore) -> None:
-        # 0. 首先清理所有旧的目录和文件，确保干净的状态
-        # 使用安全删除函数，带重试机制
+        # 0. First clean up all old directories and files to ensure clean state
+        # Use safe delete function with retry mechanism
         _safe_rmtree(self._lucene_dir())
         _safe_rmtree(self._docs_dir())
-        
-        # 1. 创建必要的目录
+
+        # 1. Create necessary directories
         os.makedirs(self.index_dir, exist_ok=True)
         os.makedirs(self._docs_dir(), exist_ok=True)
 
-        # 2. dump pages -> documents.jsonl (pyserini需要 id + contents)
+        # 2. dump pages -> documents.jsonl (pyserini requires id + contents)
         pages = page_store.load()
         docs_path = os.path.join(self._docs_dir(), "documents.jsonl")
         with open(docs_path, "w", encoding="utf-8") as f:
@@ -99,10 +99,10 @@ class BM25Retriever(AbsRetriever):
                 json.dump({"id": str(i), "contents": text}, f, ensure_ascii=False)
                 f.write("\n")
 
-        # 3. 确保 lucene index 目录是干净的
+        # 3. Ensure lucene index directory is clean
         os.makedirs(self._lucene_dir(), exist_ok=True)
 
-        # 4. 调 pyserini 构建 Lucene 索引
+        # 4. Call pyserini to build Lucene index
         cmd = [
             "python", "-m", "pyserini.index.lucene",
             "--collection", "JsonCollection",
@@ -112,8 +112,8 @@ class BM25Retriever(AbsRetriever):
             "--threads", str(self.config.get("threads", 1)),
             "--storePositions", "--storeDocvectors", "--storeRaw"
         ]
-        
-        # 添加重试机制，防止偶发的构建失败
+
+        # Add retry mechanism to prevent occasional build failures
         max_build_retries = 2
         for attempt in range(max_build_retries):
             try:
@@ -121,33 +121,33 @@ class BM25Retriever(AbsRetriever):
                 break
             except subprocess.CalledProcessError as e:
                 if attempt == max_build_retries - 1:
-                    print(f"[ERROR] Pyserini 索引构建失败:")
+                    print(f"[ERROR] Pyserini index build failed:")
                     print(f"  stdout: {e.stdout}")
                     print(f"  stderr: {e.stderr}")
                     raise
-                print(f"[WARN] Pyserini 索引构建失败，重试 {attempt + 1}/{max_build_retries}...")
-                # 清理失败的索引
+                print(f"[WARN] Pyserini index build failed, retrying {attempt + 1}/{max_build_retries}...")
+                # Clean up failed index
                 _safe_rmtree(self._lucene_dir())
                 os.makedirs(self._lucene_dir(), exist_ok=True)
                 time.sleep(1)
 
-        # 5. 把 pages 也固化到磁盘，供 load() / search() 反查
-        # 创建临时 PageStore 实例来保存
+        # 5. Persist pages to disk for load() / search() lookup
+        # Create temporary PageStore instance to save
         temp_page_store = InMemoryPageStore(dir_path=self._pages_dir())
         temp_page_store.save(pages)
-        
-        # 6. 更新内存镜像
+
+        # 6. Update memory image
         self.pages = pages
         self.searcher = LuceneSearcher(self._lucene_dir())  # type: ignore
 
     def update(self, page_store: InMemoryPageStore) -> None:
-        # Lucene 没有好用的“增量追加+可删改文档”的轻量接口（有但复杂）；
-        # 对现在这个原型我们可以直接全量重建，保持简单可靠。
+        # Lucene doesn't have a convenient "incremental append + editable document" lightweight interface (exists but complex);
+        # For this prototype, we can directly do a full rebuild to keep it simple and reliable.
         self.build(page_store)
 
     def search(self, query_list: List[str], top_k: int = 10) -> List[List[Hit]]:
         if self.searcher is None:
-            # 容错：如果忘了 load/build
+            # Fault tolerance: if load/build was forgotten
             self.load()
 
         results_all: List[List[Hit]] = []
@@ -160,7 +160,7 @@ class BM25Retriever(AbsRetriever):
             hits_for_q = []
             py_hits = self.searcher.search(q, k=top_k)
             for rank, h in enumerate(py_hits):
-                # h.docid 是字符串 id
+                # h.docid is a string id
                 idx = int(h.docid)
                 if idx < 0 or idx >= len(self.pages):
                     continue

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-GAM Evaluation Suite - 统一评估入口
+GAM Evaluation Suite - Unified evaluation entry
 
-使用示例：
+Usage examples:
     # HotpotQA
     python -m eval.run --dataset hotpotqa --data-path data/hotpotqa.json
-    
+
     # NarrativeQA
     python -m eval.run --dataset narrativeqa --data-path narrativeqa --max-samples 100
-    
+
     # LoCoMo
     python -m eval.run --dataset locomo --data-path data/locomo.json
-    
+
     # RULER
     python -m eval.run --dataset ruler --data-path data/ruler.jsonl --dataset-name niah_single_1
 """
@@ -21,7 +21,7 @@ import argparse
 import sys
 import os
 
-# 添加项目根目录到 Python 路径
+# Add project root directory to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
@@ -35,66 +35,66 @@ from eval.datasets.base import BenchmarkConfig
 
 
 def parse_args():
-    """解析命令行参数"""
+    """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description="GAM Framework 评估工具",
+        description="GAM Framework evaluation tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-示例:
-  # 评估 HotpotQA（使用 OpenAI GPT-4）
+Examples:
+  # Evaluate HotpotQA (using OpenAI GPT-4)
   python -m eval.run --dataset hotpotqa --data-path data/hotpotqa.json \\
       --generator openai --model gpt-4 --api-key YOUR_API_KEY
-  
-  # 评估 NarrativeQA（使用本地 VLLM 模型）
+
+  # Evaluate NarrativeQA (using local VLLM model)
   python -m eval.run --dataset narrativeqa --data-path narrativeqa \\
       --generator vllm --model meta-llama/Llama-3-8B --max-samples 50
-  
-  # 评估 RULER（指定数据集名称）
+
+  # Evaluate RULER (specify dataset name)
   python -m eval.run --dataset ruler --data-path data/ruler_niah.jsonl \\
       --dataset-name niah_single_1 --retriever bm25
         """
     )
-    
-    # 数据集参数
+
+    # Dataset parameters
     parser.add_argument(
         "--dataset",
         type=str,
         required=True,
         choices=["hotpotqa", "narrativeqa", "locomo", "ruler"],
-        help="数据集名称"
+        help="Dataset name"
     )
     parser.add_argument(
         "--data-path",
         type=str,
         required=True,
-        help="数据集路径（文件或目录）"
+        help="Dataset path (file or directory)"
     )
     parser.add_argument(
         "--dataset-name",
         type=str,
         default="",
-        help="数据集子集名称（仅 RULER 需要）"
+        help="Dataset subset name (only RULER needs this)"
     )
     
-    # Generator 参数
+    # Generator parameters
     parser.add_argument(
         "--generator",
         type=str,
         default="openai",
         choices=["openai", "vllm"],
-        help="生成器类型"
+        help="Generator type"
     )
     parser.add_argument(
         "--model",
         type=str,
         default="gpt-4",
-        help="模型名称或路径"
+        help="Model name or path"
     )
     parser.add_argument(
         "--api-key",
         type=str,
         default=None,
-        help="OpenAI API Key（或从环境变量 OPENAI_API_KEY 读取）"
+        help="OpenAI API Key (or read from environment variable OPENAI_API_KEY)"
     )
     parser.add_argument(
         "--api-base",
@@ -103,80 +103,80 @@ def parse_args():
         help="OpenAI API Base URL"
     )
     
-    # Retriever 参数
+    # Retriever parameters
     parser.add_argument(
         "--retriever",
         type=str,
         default="dense",
         choices=["index", "bm25", "dense"],
-        help="检索器类型"
+        help="Retriever type"
     )
     parser.add_argument(
         "--embedding-model",
         type=str,
         default="BAAI/bge-base-en-v1.5",
-        help="Embedding 模型路径（Dense Retriever）"
+        help="Embedding model path (Dense Retriever)"
     )
     
-    # 评估参数
+    # Evaluation parameters
     parser.add_argument(
         "--max-samples",
         type=int,
         default=None,
-        help="最大样本数（用于快速测试）"
+        help="Maximum number of samples (for quick testing)"
     )
     parser.add_argument(
         "--num-workers",
         type=int,
         default=4,
-        help="并行工作进程数"
+        help="Number of parallel worker processes"
     )
     parser.add_argument(
         "--chunk-size",
         type=int,
         default=2000,
-        help="文本块大小（token 数）"
+        help="Text chunk size (number of tokens)"
     )
     parser.add_argument(
         "--top-k",
         type=int,
         default=5,
-        help="检索 top-k 个相关片段"
+        help="Retrieve top-k relevant fragments"
     )
     
-    # 输出参数
+    # Output parameters
     parser.add_argument(
         "--output-dir",
         type=str,
         default="outputs",
-        help="输出目录"
+        help="Output directory"
     )
     parser.add_argument(
         "--no-save",
         action="store_true",
-        help="不保存预测结果"
+        help="Do not save prediction results"
     )
     parser.add_argument(
         "--quiet",
         action="store_true",
-        help="静默模式（减少输出）"
+        help="Quiet mode (reduce output)"
     )
     
     return parser.parse_args()
 
 
 def main():
-    """主函数"""
+    """Main function"""
     args = parse_args()
-    
-    # 如果没有提供 API Key，尝试从环境变量读取
+
+    # If no API Key is provided, try to read from environment variable
     if args.generator == "openai" and not args.api_key:
         args.api_key = os.environ.get("OPENAI_API_KEY")
         if not args.api_key:
-            print("错误: 使用 OpenAI Generator 需要提供 --api-key 或设置环境变量 OPENAI_API_KEY")
+            print("Error: Using OpenAI Generator requires --api-key or setting environment variable OPENAI_API_KEY")
             sys.exit(1)
-    
-    # 创建配置
+
+    # Create configuration
     config = BenchmarkConfig(
         data_path=args.data_path,
         generator_type=args.generator,
@@ -193,12 +193,12 @@ def main():
         save_predictions=not args.no_save,
         verbose=not args.quiet,
     )
-    
-    # 创建对应的 Benchmark
+
+    # Create corresponding Benchmark
     print(f"\n{'='*60}")
-    print(f"GAM Framework - {args.dataset.upper()} 评估")
+    print(f"GAM Framework - {args.dataset.upper()} Evaluation")
     print(f"{'='*60}\n")
-    
+
     if args.dataset == "hotpotqa":
         benchmark = HotpotQABenchmark(config)
     elif args.dataset == "narrativeqa":
@@ -208,16 +208,16 @@ def main():
     elif args.dataset == "ruler":
         benchmark = RULERBenchmark(config, dataset_name=args.dataset_name)
     else:
-        print(f"错误: 不支持的数据集 {args.dataset}")
+        print(f"Error: Unsupported dataset {args.dataset}")
         sys.exit(1)
-    
-    # 运行评估
+
+    # Run evaluation
     try:
         results = benchmark.run()
-        
-        # 打印结果
+
+        # Print results
         print(f"\n{'='*60}")
-        print("评估结果:")
+        print("Evaluation Results:")
         print(f"{'='*60}")
         for metric, value in results.items():
             if isinstance(value, float):
@@ -227,7 +227,7 @@ def main():
         print(f"{'='*60}\n")
         
     except Exception as e:
-        print(f"\n错误: 评估过程中出现异常: {e}")
+        print(f"\nError: Exception occurred during evaluation: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

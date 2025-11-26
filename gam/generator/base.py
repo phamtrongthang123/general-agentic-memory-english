@@ -17,9 +17,9 @@ class AbsGenerator(ABC):
         extra_params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
-        生成单个响应
-        返回格式: {"text": str, "json": dict|None, "response": dict}
-        注意：temperature, max_tokens 等参数已在配置中设置，无需重复传递
+        Generate single response
+        Return format: {"text": str, "json": dict|None, "response": dict}
+        Note: parameters like temperature, max_tokens are already set in config, no need to pass again
         """
         pass
 
@@ -32,8 +32,8 @@ class AbsGenerator(ABC):
         extra_params: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
-        批量生成响应
-        返回格式: [{"text": str, "json": dict|None, "response": dict}, ...]
-        注意：temperature, max_tokens 等参数已在配置中设置，无需重复传递
+        Generate batch responses
+        Return format: [{"text": str, "json": dict|None, "response": dict}, ...]
+        Note: parameters like temperature, max_tokens are already set in config, no need to pass again
         """
         pass

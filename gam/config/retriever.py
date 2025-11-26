@@ -4,7 +4,7 @@ from typing import Any, Union, List
 
 @dataclass
 class DenseRetrieverConfig:
-    """密集向量检索器配置"""
+    """Dense vector retriever configuration"""
     model_name: str = "BAAI/bge-large-zh-v1.5"
     normalize_embeddings: bool = True
     pooling_method: str = "cls"
@@ -20,12 +20,12 @@ class DenseRetrieverConfig:
 
 @dataclass
 class IndexRetrieverConfig:
-    """索引检索器配置"""
+    """Index retriever configuration"""
     index_dir: str = "./index/index"
 
 
 @dataclass
 class BM25RetrieverConfig:
-    """BM25关键词检索器配置"""
+    """BM25 keyword retriever configuration"""
     index_dir: str = "./index/bm25"
     threads: int = 4

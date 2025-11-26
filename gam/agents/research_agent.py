@@ -48,10 +48,10 @@ class ResearchAgent:
         memory_store: MemoryStore | None = None,
         tool_registry: Optional[ToolRegistry] = None,
         retrievers: Optional[Dict[str, Retriever]] = None,
-        generator: AbsGenerator | None = None,  # 必须传入Generator实例
+        generator: AbsGenerator | None = None,  # Must pass Generator instance
         max_iters: int = 3,
-        dir_path: Optional[str] = None,  # 新增：文件系统存储路径
-        system_prompts: Optional[Dict[str, str]] = None,  # 新增：system prompts字典
+        dir_path: Optional[str] = None,  # New: filesystem storage path
+        system_prompts: Optional[Dict[str, str]] = None,  # New: system prompts dictionary
     ) -> None:
         if generator is None:
             raise ValueError("Generator instance is required for ResearchAgent")
@@ -61,8 +61,8 @@ class ResearchAgent:
         self.retrievers = retrievers or {}
         self.generator = generator
         self.max_iters = max_iters
-        
-        # 初始化 system_prompts，默认值为空字符串
+
+        # Initialize system_prompts, default value is empty string
         default_system_prompts = {
             "planning": "",
             "integration": "",
@@ -71,13 +71,13 @@ class ResearchAgent:
         if system_prompts is None:
             self.system_prompts = default_system_prompts
         else:
-            # 合并用户提供的 prompts 和默认值
+            # Merge user-provided prompts with defaults
             self.system_prompts = {**default_system_prompts, **system_prompts}
 
         # Build indices upfront (if retrievers are provided)
         for name, r in self.retrievers.items():
             try:
-                # 调用 retriever 的 build 方法，传递 page_store
+                # Call retriever's build method, passing page_store
                 r.build(self.page_store)
                 print(f"Successfully built {name} retriever")
             except Exception as e:
@@ -86,15 +86,15 @@ class ResearchAgent:
 
     # ---- Public ----
     def research(self, request: str) -> ResearchOutput:
-        # 在开始研究前，确保检索器索引是最新的
+        # Before starting research, ensure retriever indices are up to date
         self._update_retrievers()
         
-        # 版本：有reflection，使用search_no_integrate，最后合并所有轮次的pages（去重）
+        # Version: with reflection, using search_no_integrate, finally merge pages from all iterations (deduplicated)
         # temp = Result()
         # iterations: List[Dict[str, Any]] = []
         # next_request = request
-        # all_pages_content = []  # 收集所有轮次的content
-        # all_pages_sources = []  # 收集所有轮次找到的pages（去重）
+        # all_pages_content = []  # Collect content from all iterations
+        # all_pages_sources = []  # Collect pages found in all iterations (deduplicated)
         # seen_sources = set()
 
         # for step in range(self.max_iters):
@@ -102,26 +102,26 @@ class ResearchAgent:
         #     memory_state = self.memory_store.load()
         #     plan = self._planning(next_request, memory_state)
 
-        #     # 使用 search_no_integrate 来测试 search 步骤的效果（不使用 LLM integration）
+        #     # Use search_no_integrate to test search step effect (without LLM integration)
         #     temp = self._search_no_integrate(plan, temp, request)
 
-        #     # 收集当前轮次找到的pages（去重）
+        #     # Collect pages found in current iteration (deduplicated)
         #     for source in temp.sources:
         #         if source and source not in seen_sources:
         #             all_pages_sources.append(source)
         #             seen_sources.add(source)
-        #     # 收集当前轮次的content
+        #     # Collect content from current iteration
         #     if temp.content:
         #         all_pages_content.append(temp.content)
 
-        #     # 创建累积的结果对象，包含所有轮次找到的pages
+        #     # Create cumulative result object containing pages found in all iterations
         #     merged_content_so_far = "\n\n".join(all_pages_content) if all_pages_content else ""
         #     all_pages_result = Result(
         #         content=merged_content_so_far,
         #         sources=all_pages_sources.copy()
         #     )
-            
-        #     # reflection 应该基于所有累积的pages，而不是单轮的结果
+
+        #     # Reflection should be based on all accumulated pages, not single iteration result
         #     decision = self._reflection(request, all_pages_result)
 
         #     iterations.append({
@@ -139,7 +139,7 @@ class ResearchAgent:
         #     else:
         #         next_request = decision.new_request
 
-        # # 合并所有轮次找到的pages的content（去重）
+        # # Merge content from pages found in all iterations (deduplicated)
         # merged_content = "\n\n".join(all_pages_content) if all_pages_content else ""
         # merged_result = Result(
         #     content=merged_content,
@@ -152,17 +152,17 @@ class ResearchAgent:
         # }
         # return ResearchOutput(integrated_memory=merged_result.content, raw_memory=raw)
         
-        # ========== 简化版本：只执行一轮 plan 和 search_no_integrate（已注释）==========
+        # ========== Simplified version: only execute one round of plan and search_no_integrate (commented out) ==========
         # temp = Result()
-        
+
         # # Load current memory state dynamically
         # memory_state = self.memory_store.load()
         # plan = self._planning(request, memory_state)
-        
-        # # 使用 search_no_integrate 来测试 search 步骤的效果（不使用 LLM integration）
+
+        # # Use search_no_integrate to test search step effect (without LLM integration)
         # temp = self._search_no_integrate(plan, temp, request)
-        
-        # # 简化返回：只包含一轮的 plan 和 search 结果
+
+        # # Simplified return: only include one round of plan and search results
         # raw = {
         #     "iterations": [{
         #         "step": 0,
@@ -173,7 +173,7 @@ class ResearchAgent:
         # }
         # return ResearchOutput(integrated_memory=temp.content, raw_memory=raw)
         
-        # ========== 原来的完整版本（已注释）==========
+        # ========== Original full version (commented out) ==========
         temp = Result()
         iterations: List[Dict[str, Any]] = []
         next_request = request
@@ -210,21 +210,21 @@ class ResearchAgent:
         return ResearchOutput(integrated_memory=temp.content, raw_memory=raw)
 
     def _update_retrievers(self):
-        """确保检索器索引是最新的"""
-        # 检查是否有新的页面需要更新索引
+        """Ensure retriever indices are up to date"""
+        # Check if there are new pages that need index update
         current_page_count = len(self.page_store.load())
-        
-        # 如果页面数量发生变化，更新所有检索器索引
+
+        # If page count changed, update all retriever indices
         if hasattr(self, '_last_page_count') and current_page_count != self._last_page_count:
-            print(f"检测到页面数量变化 ({self._last_page_count} -> {current_page_count})，更新检索器索引...")
+            print(f"Detected page count change ({self._last_page_count} -> {current_page_count}), updating retriever indices...")
             for name, retriever in self.retrievers.items():
                 try:
                     retriever.update(self.page_store)
                     print(f"✅ Updated {name} retriever index")
                 except Exception as e:
                     print(f"❌ Failed to update {name} retriever: {e}")
-        
-        # 更新页面计数
+
+        # Update page count
         self._last_page_count = current_page_count
 
     # ---- Internal ----
@@ -248,17 +248,18 @@ class ResearchAgent:
             for i, abstract in enumerate(memory_state.abstracts):
                 memory_context_lines.append(f"Page {i}: {abstract}")
             memory_context = "\n".join(memory_context_lines)
-        
+
+
         system_prompt = self.system_prompts.get("planning")
         template_prompt = Planning_PROMPT.format(request=request, memory=memory_context)
         if system_prompt:
             prompt = f"User Instructions: {system_prompt}\n\n System Prompt: {template_prompt}"
         else:
             prompt = template_prompt
-        
-        # 调试：打印prompt长度
+
+        # Debug: print prompt length
         prompt_chars = len(prompt)
-        estimated_tokens = prompt_chars // 4  # 粗略估算：1 token ≈ 4 字符
+        estimated_tokens = prompt_chars // 4  # Rough estimate: 1 token ≈ 4 characters
         print(f"[DEBUG] Planning prompt length: {prompt_chars} chars (~{estimated_tokens} tokens)")
 
         try:
@@ -305,7 +306,7 @@ class ResearchAgent:
 
             if tool == "keyword":
                 if plan.keyword_collection:
-                    # 将多个关键词拼接成一个字符串进行搜索
+                    # Concatenate multiple keywords into a single string for search
                     combined_keywords = " ".join(plan.keyword_collection)
                     keyword_results = self._search_by_keyword([combined_keywords], top_k=5)
                     # Flatten the results if they come as List[List[Hit]]
@@ -318,7 +319,7 @@ class ResearchAgent:
                     
             elif tool == "vector":
                 if plan.vector_queries:
-                    # 对每个向量查询都进行独立的搜索，然后在retriever层面聚合得分
+                    # Perform independent search for each vector query, then aggregate scores at retriever level
                     vector_results = self._search_by_vector(plan.vector_queries, top_k=5)
                     # Flatten the results if they come as List[List[Hit]]
                     if vector_results and isinstance(vector_results[0], list):
@@ -343,32 +344,32 @@ class ResearchAgent:
         if not all_hits:
             return result
         
-        # 按 page_id 去重 hits，避免同一个 page 被多个 tool 检索到时重复添加
+        # Deduplicate hits by page_id to avoid adding the same page multiple times when retrieved by different tools
         unique_hits: Dict[str, Hit] = {}  # page_id -> Hit
-        hits_without_id: List[Hit] = []  # 没有 page_id 的 hits
+        hits_without_id: List[Hit] = []  # hits without page_id
         for hit in all_hits:
             if hit.page_id:
-                # 如果这个 page_id 还没出现过，或者当前 hit 的得分更高（如果有的话），则更新
+                # If this page_id hasn't appeared yet, or if the current hit has a higher score (if available), update it
                 if hit.page_id not in unique_hits:
                     unique_hits[hit.page_id] = hit
                 else:
-                    # 如果已有该 page_id 的 hit，比较得分（如果有的话），保留得分更高的
+                    # If there's already a hit with this page_id, compare scores (if available) and keep the higher one
                     existing_hit = unique_hits[hit.page_id]
                     existing_score = existing_hit.meta.get("score", 0) if existing_hit.meta else 0
                     current_score = hit.meta.get("score", 0) if hit.meta else 0
                     if current_score > existing_score:
                         unique_hits[hit.page_id] = hit
             else:
-                # 没有 page_id 的 hits 也保留
+                # Also keep hits without page_id
                 hits_without_id.append(hit)
-        
-        # 合并有 page_id 和没有 page_id 的 hits，按得分排序
+
+        # Merge hits with page_id and hits without page_id, sort by score
         all_unique_hits = list(unique_hits.values()) + hits_without_id
         sorted_hits = sorted(all_unique_hits, 
                            key=lambda h: h.meta.get("score", 0) if h.meta else 0, 
                            reverse=True)
         
-        # 统一进行一次 integrate
+        # Perform a unified integration
         return self._integrate(sorted_hits, result, question)
 
     def _search_no_integrate(self, plan: SearchPlan, result: Result, question: str) -> Result:
@@ -387,7 +388,7 @@ class ResearchAgent:
 
             if tool == "keyword":
                 if plan.keyword_collection:
-                    # 将多个关键词拼接成一个字符串进行搜索
+                    # Concatenate multiple keywords into a single string for search
                     combined_keywords = " ".join(plan.keyword_collection)
                     keyword_results = self._search_by_keyword([combined_keywords], top_k=5)
                     # Flatten the results if they come as List[List[Hit]]
@@ -400,7 +401,7 @@ class ResearchAgent:
                     
             elif tool == "vector":
                 if plan.vector_queries:
-                    # 对每个向量查询都进行独立的搜索，然后在retriever层面聚合得分
+                    # Perform independent search for each vector query, then aggregate scores at retriever level
                     vector_results = self._search_by_vector(plan.vector_queries, top_k=5)
                     # Flatten the results if they come as List[List[Hit]]
                     if vector_results and isinstance(vector_results[0], list):
@@ -425,31 +426,31 @@ class ResearchAgent:
         if not all_hits:
             return result
         
-        # 按 page_id 去重 hits，避免同一个 page 被多个 tool 检索到时重复添加
+        # Deduplicate hits by page_id to avoid adding the same page multiple times when retrieved by different tools
         unique_hits: Dict[str, Hit] = {}  # page_id -> Hit
-        hits_without_id: List[Hit] = []  # 没有 page_id 的 hits
+        hits_without_id: List[Hit] = []  # hits without page_id
         for hit in all_hits:
             if hit.page_id:
-                # 如果这个 page_id 还没出现过，或者当前 hit 的得分更高（如果有的话），则更新
+                # If this page_id hasn't appeared yet, or if the current hit has a higher score (if available), update it
                 if hit.page_id not in unique_hits:
                     unique_hits[hit.page_id] = hit
                 else:
-                    # 如果已有该 page_id 的 hit，比较得分（如果有的话），保留得分更高的
+                    # If there's already a hit with this page_id, compare scores (if available) and keep the higher one
                     existing_hit = unique_hits[hit.page_id]
                     existing_score = existing_hit.meta.get("score", 0) if existing_hit.meta else 0
                     current_score = hit.meta.get("score", 0) if hit.meta else 0
                     if current_score > existing_score:
                         unique_hits[hit.page_id] = hit
             else:
-                # 没有 page_id 的 hits 也保留
+                # Also keep hits without page_id
                 hits_without_id.append(hit)
         
         evidence_text = []
         sources = []
         seen_sources = set()
         
-        # 按得分排序（如果有的话），然后格式化
-        # 合并有 page_id 和没有 page_id 的 hits
+        # Sort by score (if available), then format
+        # Merge hits with page_id and hits without page_id
         all_unique_hits = list(unique_hits.values()) + hits_without_id
         sorted_hits = sorted(all_unique_hits, 
                            key=lambda h: h.meta.get("score", 0) if h.meta else 0, 
@@ -497,7 +498,7 @@ class ResearchAgent:
             if hit.page_id:
                 sources.append(hit.page_id)
         
-        evidence_context = "\n".join(evidence_text) if evidence_text else "无搜索结果"
+        evidence_context = "\n".join(evidence_text) if evidence_text else "No search results"
         
         system_prompt = self.system_prompts.get("integration")
         template_prompt = Integrate_PROMPT.format(question=question, evidence_context=evidence_context, result=result.content)
@@ -509,11 +510,12 @@ class ResearchAgent:
         try:
             response = self.generator.generate_single(prompt=prompt, schema=INTEGRATE_SCHEMA)
             data = response.get("json") or json.loads(response["text"])
-            
-            # 处理 sources：确保是字符串列表（如果LLM返回的是整数，转换为字符串）
+
+
+            # Handle sources: ensure string list (if LLM returns integers, convert to strings)
             llm_sources = data.get("sources", sources)
             if llm_sources:
-                # 将整数或混合类型转换为字符串列表
+                # Convert integers or mixed types to string list
                 sources_list = []
                 for s in llm_sources:
                     if s is not None:
@@ -535,7 +537,7 @@ class ResearchAgent:
         r = self.retrievers.get("keyword")
         if r is not None:
             try:
-                # BM25Retriever 返回 List[List[Hit]]
+                # BM25Retriever returns List[List[Hit]]
                 return r.search(query_list, top_k=top_k)
             except Exception as e:
                 print(f"Error in keyword search: {e}")
@@ -569,21 +571,22 @@ class ResearchAgent:
         r = self.retrievers.get("page_index")
         if r is not None:
             try:
-                # IndexRetriever 现在期望 List[str]，将 page_index 转换为逗号分隔的字符串
+                # IndexRetriever now expects List[str], convert page_index to comma-separated string
                 query_string = ",".join([str(idx) for idx in page_index])
                 hits = r.search([query_string], top_k=len(page_index))
                 return hits if hits else []
             except Exception as e:
                 print(f"Error in page index search: {e}")
                 return []
-        
-        # fallback: 直接通过 page_store 获取页面
+
+
+        # fallback: directly get pages through page_store
         out: List[Hit] = []
         for idx in page_index:
             p = self.page_store.get(idx)
             if p:
                 out.append(Hit(page_id=str(idx), snippet=p.content, source="page_index", meta={}))
-        return [out]  # 包装成 List[List[Hit]] 格式
+        return [out]  # Wrap in List[List[Hit]] format
         
         
 
@@ -601,8 +604,9 @@ class ResearchAgent:
         
         try:
             system_prompt = self.system_prompts.get("reflection")
-            
-            # 调试：打印reflection prompt长度
+
+
+            # Debug: print reflection prompt length
             result_content_chars = len(result.content)
             estimated_result_tokens = result_content_chars // 4
             print(f"[DEBUG] Reflection result.content length: {result_content_chars} chars (~{estimated_result_tokens} tokens)")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-允许通过 python -m eval.run 运行
+Allows running via python -m eval.run
 """
 
 from eval.run import main

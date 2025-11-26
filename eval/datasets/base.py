@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-评估基准基类
+Benchmark base class
 
-所有数据集评估都应继承此基类
+All dataset evaluations should inherit from this base class
 """
 
 from abc import ABC, abstractmethod
@@ -12,136 +12,136 @@ from dataclasses import dataclass
 
 @dataclass
 class BenchmarkConfig:
-    """评估配置"""
-    # 数据路径
+    """Evaluation configuration"""
+    # Data path
     data_path: str
-    
-    # 模型配置
+
+    # Model configuration
     generator_type: str = "openai"  # "openai" or "vllm"
     model_name: str = "gpt-4"
     api_key: Optional[str] = None
     api_base: Optional[str] = None
-    
-    # 检索器配置
+
+    # Retriever configuration
     retriever_type: str = "dense"  # "index", "bm25", "dense"
     embedding_model: Optional[str] = None
-    
-    # 评估配置
+
+    # Evaluation configuration
     max_samples: Optional[int] = None
     num_workers: int = 4
     chunk_size: int = 2000
     top_k: int = 5
-    
-    # 输出配置
+
+    # Output configuration
     output_dir: str = "outputs"
     save_predictions: bool = True
     verbose: bool = True
 
 
 class BaseBenchmark(ABC):
-    """评估基准基类"""
-    
+    """Benchmark base class"""
+
     def __init__(self, config: BenchmarkConfig):
         self.config = config
         self.data = []
         self.predictions = []
         self.results = {}
-    
+
     @abstractmethod
     def load_data(self) -> List[Dict[str, Any]]:
-        """加载数据集"""
+        """Load dataset"""
         pass
-    
+
     @abstractmethod
     def prepare_chunks(self, sample: Dict[str, Any]) -> List[str]:
-        """准备待记忆的文本块"""
+        """Prepare text chunks for memorization"""
         pass
-    
+
     @abstractmethod
     def extract_question(self, sample: Dict[str, Any]) -> str:
-        """提取问题"""
+        """Extract question"""
         pass
-    
+
     @abstractmethod
     def extract_ground_truth(self, sample: Dict[str, Any]) -> List[str]:
-        """提取标准答案"""
+        """Extract ground truth answers"""
         pass
-    
+
     @abstractmethod
     def compute_metrics(self, predictions: List[str], ground_truths: List[List[str]]) -> Dict[str, float]:
-        """计算评估指标"""
+        """Compute evaluation metrics"""
         pass
     
     def run(self) -> Dict[str, float]:
         """
-        运行完整评估流程
-        
+        Run complete evaluation pipeline
+
         Returns:
-            评估结果字典
+            Evaluation results dictionary
         """
-        # 1. 加载数据
-        print(f"正在加载数据集: {self.config.data_path}")
+        # 1. Load data
+        print(f"Loading dataset: {self.config.data_path}")
         self.data = self.load_data()
-        
+
         if self.config.max_samples:
             self.data = self.data[:self.config.max_samples]
-        
-        print(f"加载了 {len(self.data)} 个样本")
-        
-        # 2. 初始化 Agent
-        print("正在初始化 GAM Agent...")
+
+        print(f"Loaded {len(self.data)} samples")
+
+        # 2. Initialize Agent
+        print("Initializing GAM Agent...")
         memory_agent, research_agent = self._setup_agents()
-        
-        # 3. 运行评估
-        print("开始评估...")
+
+        # 3. Run evaluation
+        print("Starting evaluation...")
         self.predictions = []
         ground_truths = []
-        
+
         for idx, sample in enumerate(self.data):
             if self.config.verbose:
-                print(f"\n处理样本 {idx + 1}/{len(self.data)}")
-            
+                print(f"\nProcessing sample {idx + 1}/{len(self.data)}")
+
             try:
-                # 准备chunks并记忆
+                # Prepare chunks and memorize
                 chunks = self.prepare_chunks(sample)
                 for chunk in chunks:
                     memory_agent.memorize(chunk)
-                
-                # 提取问题并研究
+
+                # Extract question and research
                 question = self.extract_question(sample)
                 research_output = research_agent.research(
                     question=question,
                     top_k=self.config.top_k
                 )
-                
+
                 prediction = research_output.final_answer
                 self.predictions.append(prediction)
-                
-                # 提取标准答案
+
+                # Extract ground truth
                 gt = self.extract_ground_truth(sample)
                 ground_truths.append(gt)
-                
+
                 if self.config.verbose:
-                    print(f"预测: {prediction[:100]}...")
-                    print(f"标准答案: {gt[0][:100] if gt else 'N/A'}...")
-            
+                    print(f"Prediction: {prediction[:100]}...")
+                    print(f"Ground truth: {gt[0][:100] if gt else 'N/A'}...")
+
             except Exception as e:
-                print(f"处理样本 {idx} 时出错: {e}")
+                print(f"Error processing sample {idx}: {e}")
                 self.predictions.append("")
                 ground_truths.append([""])
-        
-        # 4. 计算指标
-        print("\n计算评估指标...")
+
+        # 4. Compute metrics
+        print("\nComputing evaluation metrics...")
         self.results = self.compute_metrics(self.predictions, ground_truths)
-        
-        # 5. 保存结果
+
+        # 5. Save results
         if self.config.save_predictions:
             self._save_results()
-        
+
         return self.results
     
     def _setup_agents(self):
-        """设置 Memory 和 Research Agent"""
+        """Setup Memory and Research Agent"""
         from gam import (
             MemoryAgent,
             ResearchAgent,
@@ -159,7 +159,7 @@ class BaseBenchmark(ABC):
             DenseRetrieverConfig,
         )
         
-        # 创建 Generator
+        # Create Generator
         if self.config.generator_type == "openai":
             gen_config = OpenAIGeneratorConfig(
                 model=self.config.model_name,
@@ -175,11 +175,11 @@ class BaseBenchmark(ABC):
         else:
             raise ValueError(f"Unknown generator type: {self.config.generator_type}")
         
-        # 创建存储
+        # Create stores
         memory_store = InMemoryMemoryStore()
         page_store = InMemoryPageStore()
-        
-        # 创建检索器
+
+        # Create retriever
         if self.config.retriever_type == "index":
             retriever_config = IndexRetrieverConfig()
             retriever = IndexRetriever(retriever_config, memory_store, page_store)
@@ -194,7 +194,7 @@ class BaseBenchmark(ABC):
         else:
             raise ValueError(f"Unknown retriever type: {self.config.retriever_type}")
         
-        # 创建 Agent
+        # Create Agent
         memory_agent = MemoryAgent(
             generator=generator,
             memory_store=memory_store,
@@ -209,7 +209,7 @@ class BaseBenchmark(ABC):
         return memory_agent, research_agent
     
     def _save_results(self):
-        """保存评估结果"""
+        """Save evaluation results"""
         import os
         import json
         from datetime import datetime
@@ -243,5 +243,5 @@ class BaseBenchmark(ABC):
         with open(result_file, 'w', encoding='utf-8') as f:
             json.dump(output, f, ensure_ascii=False, indent=2)
         
-        print(f"\n结果已保存到: {result_file}")
+        print(f"\nResults saved to: {result_file}")
 

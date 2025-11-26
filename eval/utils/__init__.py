@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""GAM 评估工具模块"""
+"""GAM Evaluation Utilities Module"""
 
 from eval.utils.chunking import (
     chunk_text_by_tokens,

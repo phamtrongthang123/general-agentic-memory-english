@@ -13,8 +13,8 @@ from .result import Result, EnoughDecision, ReflectionDecision, ResearchOutput, 
 # =============================
 # Model rebuilding for forward references
 # =============================
-# 显式重建模型以确保在并发环境下所有前向引用（如 'Page'）都正确解析
-# 这对于多线程环境尤为重要
+# Explicitly rebuild models to ensure all forward references (e.g., 'Page') are correctly resolved in concurrent environments
+# This is especially important for multi-threaded environments
 MemoryUpdate.model_rebuild()
 ResearchOutput.model_rebuild()
 

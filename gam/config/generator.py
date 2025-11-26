@@ -4,7 +4,7 @@ from typing import Any, Union, Optional, Dict
 
 @dataclass
 class OpenAIGeneratorConfig:
-    """OpenAI生成器配置"""
+    """OpenAI generator configuration"""
     model_name: str = "gpt-4o-mini"
     api_key: str | None = None
     base_url: str | None = None
@@ -20,8 +20,8 @@ class OpenAIGeneratorConfig:
 @dataclass
 class VLLMGeneratorConfig:
     """
-    vLLM 生成器（本地 OpenAI 兼容端点 /v1/chat/completions）
-    注意：这是“客户端调用”所需的字段；与“启动 vLLM 服务器”的参数不同。
+    vLLM generator (local OpenAI-compatible endpoint /v1/chat/completions)
+    Note: These are the fields needed for "client calls"; different from parameters for "starting vLLM server".
     """
     model_name: str = "Qwen2.5-7B-Instruct"   
     api_key: Optional[str] = "empty"          

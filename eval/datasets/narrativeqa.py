@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-NarrativeQA 数据集评估
+NarrativeQA dataset evaluation
 
-NarrativeQA 是一个叙事阅读理解数据集，包含长文档和相关问题
+NarrativeQA is a narrative reading comprehension dataset containing long documents and related questions
 """
 
 from typing import Any, Dict, List
@@ -11,13 +11,13 @@ from eval.utils import chunk_text_by_sentences, compute_metrics
 
 
 class NarrativeQABenchmark(BaseBenchmark):
-    """NarrativeQA 评估基准"""
-    
+    """NarrativeQA evaluation benchmark"""
+
     def load_data(self) -> List[Dict[str, Any]]:
-        """加载 NarrativeQA 数据集"""
+        """Load NarrativeQA dataset"""
         from datasets import load_dataset
-        
-        # 加载数据集
+
+        # Load dataset
         dataset = load_dataset(self.config.data_path, split="test")
         
         data_all = []
@@ -37,7 +37,7 @@ class NarrativeQABenchmark(BaseBenchmark):
         return data_all
     
     def prepare_chunks(self, sample: Dict[str, Any]) -> List[str]:
-        """将文档文本分块（按句子切分以保持连贯性）"""
+        """Chunk document text (split by sentences to maintain coherence)"""
         document_text = sample.get("document_text", "")
         if not document_text:
             return []
@@ -48,20 +48,20 @@ class NarrativeQABenchmark(BaseBenchmark):
         )
     
     def extract_question(self, sample: Dict[str, Any]) -> str:
-        """提取问题"""
+        """Extract question"""
         return sample.get("question_text", "")
     
     def extract_ground_truth(self, sample: Dict[str, Any]) -> List[str]:
-        """提取标准答案"""
+        """Extract ground truth answers"""
         answers = sample.get("answers", [])
         return [str(a) for a in answers if a]
     
     def compute_metrics(
-        self, 
-        predictions: List[str], 
+        self,
+        predictions: List[str],
         ground_truths: List[List[str]]
     ) -> Dict[str, float]:
-        """计算 F1 指标"""
+        """Compute F1 metrics"""
         return compute_metrics(
             predictions, 
             ground_truths, 

@@ -20,7 +20,7 @@ from gam.generator import AbsGenerator, OpenAIGenerator, VLLMGenerator
 # Retrievers
 from gam.retriever import AbsRetriever, IndexRetriever
 
-# 尝试导入可选检索器
+# Try to import optional retrievers
 try:
     from gam.retriever import BM25Retriever
 except ImportError:

@@ -35,24 +35,24 @@ class MemoryAgent:
         self,
         memory_store: MemoryStore | None = None,
         page_store: PageStore | None = None,
-        generator: AbsGenerator | None = None,  # 必须传入Generator实例
-        dir_path: Optional[str] = None,  # 新增：文件系统存储路径
-        system_prompts: Optional[Dict[str, str]] = None,  # 新增：system prompts字典
+        generator: AbsGenerator | None = None,  # Must pass Generator instance
+        dir_path: Optional[str] = None,  # New: filesystem storage path
+        system_prompts: Optional[Dict[str, str]] = None,  # New: system prompts dictionary
     ) -> None:
         if generator is None:
             raise ValueError("Generator instance is required for MemoryAgent")
         self.memory_store = memory_store or InMemoryMemoryStore(dir_path=dir_path)
         self.page_store = page_store or InMemoryPageStore(dir_path=dir_path)
         self.generator = generator
-        
-        # 初始化 system_prompts，默认值为空字符串
+
+        # Initialize system_prompts, default value is empty string
         default_system_prompts = {
             "memory": ""
         }
         if system_prompts is None:
             self.system_prompts = default_system_prompts
         else:
-            # 合并用户提供的 prompts 和默认值
+            # Merge user-provided prompts with defaults
             self.system_prompts = {**default_system_prompts, **system_prompts}
 
 

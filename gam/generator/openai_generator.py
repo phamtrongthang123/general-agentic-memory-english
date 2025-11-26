@@ -42,10 +42,10 @@ class OpenAIGenerator(AbsGenerator):
         extra_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        极简 Chat 调用（OpenAI SDK）
-        - 二选一：prompt 文本 或 messages 列表
-        - 若传 schema：使用 response_format.json_schema 进行结构化输出
-        返回：
+        Minimalist Chat call (OpenAI SDK)
+        - Choose one: prompt text or messages list
+        - If schema is passed: use response_format.json_schema for structured output
+        Returns:
           {"text": str, "json": dict|None, "response": dict}
         """
         if (prompt is None) and (not messages):
@@ -53,13 +53,13 @@ class OpenAIGenerator(AbsGenerator):
         if (prompt is not None) and messages:
             raise ValueError("Pass either prompt or messages, not both.")
 
-        # 构造 messages
+        # Build messages
         if messages is None:
             messages = [{"role": "user", "content": prompt}]  # type: ignore[arg-type]
         if self.system_prompt and not any(m.get("role") == "system" for m in messages):
             messages = [{"role": "system", "content": self.system_prompt}] + messages
 
-        # 构造 response_format
+        # Build response_format
         response_format = None
         if schema is not None:
             response_format = {
@@ -93,7 +93,7 @@ class OpenAIGenerator(AbsGenerator):
             except Exception as e:
                 print(str(e), 'times:', times)
                 times += 1
-                if times > 3:  # 最多重试3次
+                if times > 3:  # Maximum 3 retries
                     raise e
                 time.sleep(5)
 
@@ -119,8 +119,8 @@ class OpenAIGenerator(AbsGenerator):
         extra_params: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
-        批量生成响应
-        返回格式: [{"text": str, "json": dict|None, "response": dict}, ...]
+        Generate batch responses
+        Return format: [{"text": str, "json": dict|None, "response": dict}, ...]
         """
         if (prompts is None) and (not messages_list):
             raise ValueError("Either prompts or messages_list is required.")
@@ -130,7 +130,7 @@ class OpenAIGenerator(AbsGenerator):
         if prompts is not None:
             if isinstance(prompts, str):
                 prompts = [prompts]
-            # 转换为 messages_list 格式
+            # Convert to messages_list format
             messages_list = [[{"role": "user", "content": prompt}] for prompt in prompts]
 
         if self.thread_count is None:
@@ -138,7 +138,7 @@ class OpenAIGenerator(AbsGenerator):
         else:
             thread_count = self.thread_count
 
-        # 创建部分应用的函数
+        # Create partially applied function
         def generate_single_wrapper(messages):
             return self.generate_single(
                 messages=messages,
@@ -155,5 +155,5 @@ class OpenAIGenerator(AbsGenerator):
     
     @classmethod
     def from_config(cls, config: OpenAIGeneratorConfig) -> "OpenAIGenerator":
-        """从配置类创建 OpenAIGenerator 实例"""
+        """Create OpenAIGenerator instance from config class"""
         return cls(config.__dict__)

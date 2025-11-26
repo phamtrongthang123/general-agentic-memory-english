@@ -9,14 +9,14 @@ from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count
 from tqdm import tqdm
 
-from gam.generator.base import AbsGenerator  # <- 你的基类
-# 如果你有专门的 Config dataclass，也可像 OpenAIGenerator 一样 from_config
+from gam.generator.base import AbsGenerator  # <- Your base class
+# If you have a dedicated Config dataclass, you can also use from_config like OpenAIGenerator
 
 class VLLMGenerator(AbsGenerator):
     """
-    使用 vLLM 的 OpenAI 兼容端点，并通过 guided_json 做结构化输出。
-    与 OpenAIGenerator 的差异：不构造 response_format.json_schema，
-    而是在 extra_body 里放 guided_json / guided_grammar / guided_regex 等。
+    Uses vLLM's OpenAI-compatible endpoint with guided_json for structured output.
+    Difference from OpenAIGenerator: doesn't build response_format.json_schema,
+    but puts guided_json / guided_grammar / guided_regex etc. in extra_body.
     """
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
@@ -31,14 +31,14 @@ class VLLMGenerator(AbsGenerator):
         self.system_prompt = config.get("system_prompt")
         self.timeout = config.get("timeout", 60.0)
 
-        # 兼容 openai SDK 的环境变量（可选）
+        # Environment variables compatible with openai SDK (optional)
         if self.api_key is not None:
             os.environ["OPENAI_API_KEY"] = self.api_key
         if self.base_url is not None:
             os.environ["OPENAI_BASE_URL"] = self.base_url
 
         self._client = OpenAI(api_key=self.api_key, base_url=self.base_url.rstrip("/"))
-        # 某些 openai 版本支持 with_options
+        # Some openai versions support with_options
         self._cclient = (
             self._client.with_options(timeout=self.timeout)
             if hasattr(self._client, "with_options") else self._client
@@ -53,7 +53,7 @@ class VLLMGenerator(AbsGenerator):
             raise ValueError("Either prompt or messages is required.")
         if (prompt is not None) and messages:
             raise ValueError("Pass either prompt or messages, not both.")
-        # 构造 messages
+        # Build messages
         if messages is None:
             messages = [{"role": "user", "content": prompt}]  # type: ignore[arg-type]
         if self.system_prompt and not any(m.get("role") == "system" for m in messages):
@@ -68,16 +68,16 @@ class VLLMGenerator(AbsGenerator):
         extra_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        极简 Chat 调用（vLLM OpenAI 兼容端点）
-        - 二选一：prompt 文本 或 messages 列表
-        - 若传 schema：通过 extra_body={"guided_json": schema} 进行结构化输出
-        返回：
+        Minimalist Chat call (vLLM OpenAI-compatible endpoint)
+        - Choose one: prompt text or messages list
+        - If schema is passed: use extra_body={"guided_json": schema} for structured output
+        Returns:
           {"text": str, "json": dict|None, "response": dict}
         """
         msgs = self._build_messages(prompt, messages)
 
-        # vLLM 结构化输出的推荐用法：guided_json
-        # 也可换成 guided_grammar / guided_regex / guided_choice
+        # Recommended usage for vLLM structured output: guided_json
+        # Can also use guided_grammar / guided_regex / guided_choice
         extra_body: Dict[str, Any] = {}
         if schema is not None:
             extra_body["guided_json"] = schema
@@ -89,7 +89,7 @@ class VLLMGenerator(AbsGenerator):
             "max_tokens": self.max_tokens,
         }
         if extra_params:
-            # 用户自定义的其他 vLLM 扩展参数（如 guided_choice 等）
+            # User-defined other vLLM extension parameters (like guided_choice, etc.)
             params.update(extra_params)
         if extra_body:
             params["extra_body"] = {**params.get("extra_body", {}), **extra_body}
@@ -102,7 +102,7 @@ class VLLMGenerator(AbsGenerator):
             except Exception as e:
                 print(str(e), "times:", times)
                 times += 1
-                if times > 3:  # 最多重试3次
+                if times > 3:  # Maximum 3 retries
                     raise e
                 time.sleep(5)
 
@@ -116,7 +116,7 @@ class VLLMGenerator(AbsGenerator):
 
         out: Dict[str, Any] = {"text": text, "json": None, "response": resp.model_dump()}
         if schema is not None:
-            # vLLM 的 guided_json 会尽量保证合法 JSON，但仍建议做一次解析
+            # vLLM's guided_json will try to ensure valid JSON, but still recommend parsing once
             try:
                 out["json"] = json.loads(text[text.find('{'): text.rfind('}') + 1])
             except Exception:
@@ -131,8 +131,8 @@ class VLLMGenerator(AbsGenerator):
         extra_params: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
-        批量生成响应
-        返回格式: [{"text": str, "json": dict|None, "response": dict}, ...]
+        Generate batch responses
+        Return format: [{"text": str, "json": dict|None, "response": dict}, ...]
         """
         if (prompts is None) and (not messages_list):
             raise ValueError("Either prompts or messages_list is required.")
@@ -159,7 +159,7 @@ class VLLMGenerator(AbsGenerator):
 
     @classmethod
     def from_config(cls, config) -> "VLLMGenerator":
-        """与 OpenAIGenerator 的 from_config 对齐；config 可传 dict 或你的 dataclass"""
+        """Align with OpenAIGenerator's from_config; config can be dict or your dataclass"""
         if hasattr(config, "__dict__"):
             return cls(config.__dict__)
         return cls(config)

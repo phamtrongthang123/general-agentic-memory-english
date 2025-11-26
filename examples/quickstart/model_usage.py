@@ -3,13 +3,13 @@
 """
 GAM Model Usage Example
 
-展示如何使用不同的 LLM 模型（OpenAI API 或本地 VLLM）与 GAM 框架。
+Demonstrates how to use different LLM models (OpenAI API or local VLLM) with the GAM framework.
 """
 
 import sys
 import os
 
-# 添加项目根目录到 Python 路径
+# Add project root directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))
 sys.path.insert(0, project_root)
@@ -24,228 +24,228 @@ from gam import (
 
 
 def openai_api_example():
-    """OpenAI API 模型使用示例"""
-    print("=== OpenAI API 模型示例 ===\n")
-    
-    # 1. 配置 OpenAI Generator
+    """OpenAI API model usage example"""
+    print("=== OpenAI API Model Example ===\n")
+
+    # 1. Configure OpenAI Generator
     gen_config = OpenAIGeneratorConfig(
-        model="gpt-4o-mini",  # 或 "gpt-4", "gpt-3.5-turbo"
+        model="gpt-4o-mini",  # or "gpt-4", "gpt-3.5-turbo"
         api_key=os.getenv("OPENAI_API_KEY"),
         temperature=0.3,
         max_tokens=1000
     )
-    
-    # 2. 创建 Generator
+
+    # 2. Create Generator
     generator = OpenAIGenerator(gen_config)
-    
-    # 3. 创建存储
+
+    # 3. Create storage
     memory_store = InMemoryMemoryStore()
     page_store = InMemoryPageStore()
-    
-    # 4. 创建 MemoryAgent
+
+    # 4. Create MemoryAgent
     memory_agent = MemoryAgent(
         generator=generator,
         memory_store=memory_store,
         page_store=page_store
     )
-    
-    # 5. 测试简单文档
+
+    # 5. Test simple documents
     documents = [
-        "机器学习是人工智能的一个子集。",
-        "深度学习使用多层神经网络。",
-        "自然语言处理专注于人类语言理解。"
+        "Machine learning is a subset of artificial intelligence.",
+        "Deep learning uses multi-layer neural networks.",
+        "Natural language processing focuses on human language understanding."
     ]
-    
-    print(f"正在处理 {len(documents)} 个文档...")
+
+    print(f"Processing {len(documents)} documents...")
     for doc in documents:
         memory_agent.memorize(doc)
-    
+
     memory_state = memory_agent.get_memory_state()
-    print(f"✅ 构建了 {len(memory_state.events)} 个记忆事件")
-    print(f"✅ 生成了 {len(memory_state.abstracts)} 个记忆摘要\n")
+    print(f"Constructed {len(memory_state.events)} memory events")
+    print(f"Generated {len(memory_state.abstracts)} memory abstracts\n")
     
     return True
 
 
 def custom_api_endpoint_example():
-    """自定义 API 端点示例（兼容 OpenAI 的第三方服务）"""
-    print("=== 自定义 API 端点示例 ===\n")
-    
-    # 1. 配置自定义端点的 OpenAI Generator
+    """Custom API endpoint example (OpenAI-compatible third-party services)"""
+    print("=== Custom API Endpoint Example ===\n")
+
+    # 1. Configure OpenAI Generator with custom endpoint
     gen_config = OpenAIGeneratorConfig(
         model="gpt-4o-mini",
         api_key=os.getenv("OPENAI_API_KEY"),
-        base_url="https://your-custom-endpoint.com/v1",  # 自定义端点
+        base_url="https://your-custom-endpoint.com/v1",  # Custom endpoint
         temperature=0.3
     )
-    
-    # 2. 创建 Generator
+
+    # 2. Create Generator
     generator = OpenAIGenerator(gen_config)
-    
-    # 3. 创建存储
+
+    # 3. Create storage
     memory_store = InMemoryMemoryStore()
     page_store = InMemoryPageStore()
-    
-    # 4. 创建 MemoryAgent
+
+    # 4. Create MemoryAgent
     memory_agent = MemoryAgent(
         generator=generator,
         memory_store=memory_store,
         page_store=page_store
     )
-    
-    print("✅ 配置了自定义 API 端点")
-    print(f"   端点: {gen_config.base_url}")
-    print(f"   模型: {gen_config.model}\n")
+
+    print("Configured custom API endpoint")
+    print(f"   Endpoint: {gen_config.base_url}")
+    print(f"   Model: {gen_config.model}\n")
     
     return True
 
 
 def vllm_local_model_example():
-    """VLLM 本地模型使用示例"""
-    print("=== VLLM 本地模型示例 ===\n")
-    
+    """VLLM local model usage example"""
+    print("=== VLLM Local Model Example ===\n")
+
     try:
         from gam import VLLMGenerator, VLLMGeneratorConfig
-        
-        # 1. 配置 VLLM Generator
+
+        # 1. Configure VLLM Generator
         gen_config = VLLMGeneratorConfig(
-            model_path="meta-llama/Llama-3-8B",  # 本地模型路径
+            model_path="meta-llama/Llama-3-8B",  # Local model path
             temperature=0.7,
             max_tokens=512,
             gpu_memory_utilization=0.9
         )
-        
-        # 2. 创建 Generator
+
+        # 2. Create Generator
         generator = VLLMGenerator(gen_config)
-        
-        # 3. 创建存储
+
+        # 3. Create storage
         memory_store = InMemoryMemoryStore()
         page_store = InMemoryPageStore()
-        
-        # 4. 创建 MemoryAgent
+
+        # 4. Create MemoryAgent
         memory_agent = MemoryAgent(
             generator=generator,
             memory_store=memory_store,
             page_store=page_store
         )
-        
-        # 5. 测试简单文档
+
+        # 5. Test simple documents
         documents = [
             "AI is artificial intelligence.",
             "ML is machine learning.",
             "DL is deep learning."
         ]
-        
-        print(f"正在处理 {len(documents)} 个文档...")
+
+        print(f"Processing {len(documents)} documents...")
         for doc in documents:
             memory_agent.memorize(doc)
-        
+
         memory_state = memory_agent.get_memory_state()
-        print(f"✅ 构建了 {len(memory_state.events)} 个记忆事件")
-        print(f"✅ 生成了 {len(memory_state.abstracts)} 个记忆摘要\n")
-        
+        print(f"Constructed {len(memory_state.events)} memory events")
+        print(f"Generated {len(memory_state.abstracts)} memory abstracts\n")
+
         return True
-        
+
     except ImportError as e:
-        print(f"❌ 缺少依赖: {e}")
-        print("   请安装: pip install vllm>=0.6.0")
+        print(f"Missing dependency: {e}")
+        print("   Please install: pip install vllm>=0.6.0")
         return False
     except Exception as e:
-        print(f"❌ 本地模型错误: {e}")
-        print("   提示: 如果内存有限，尝试使用更小的模型")
+        print(f"Local model error: {e}")
+        print("   Tip: If memory is limited, try using a smaller model")
         return False
 
 
 def model_comparison():
-    """模型对比说明"""
-    print("\n=== 模型选择指南 ===\n")
-    
-    print("📌 OpenAI API 模型:")
-    print("   优点:")
-    print("     ✅ 快速开始，无需本地资源")
-    print("     ✅ 强大的性能和准确性")
-    print("     ✅ 自动更新和维护")
-    print("   缺点:")
-    print("     ❌ 需要网络连接")
-    print("     ❌ 按使用量付费")
-    print("     ❌ 数据发送到外部服务器")
+    """Model comparison guide"""
+    print("\n=== Model Selection Guide ===\n")
+
+    print("OpenAI API Models:")
+    print("   Advantages:")
+    print("     - Quick start, no local resources required")
+    print("     - Powerful performance and accuracy")
+    print("     - Automatic updates and maintenance")
+    print("   Disadvantages:")
+    print("     - Requires network connection")
+    print("     - Pay-per-use pricing")
+    print("     - Data sent to external servers")
     print()
-    
-    print("📌 VLLM 本地模型:")
-    print("   优点:")
-    print("     ✅ 完全离线运行")
-    print("     ✅ 数据隐私保护")
-    print("     ✅ 无使用限制")
-    print("   缺点:")
-    print("     ❌ 需要 GPU 资源")
-    print("     ❌ 需要下载和管理模型")
-    print("     ❌ 可能需要更多配置")
+
+    print("VLLM Local Models:")
+    print("   Advantages:")
+    print("     - Fully offline operation")
+    print("     - Data privacy protection")
+    print("     - No usage limits")
+    print("   Disadvantages:")
+    print("     - Requires GPU resources")
+    print("     - Need to download and manage models")
+    print("     - May require more configuration")
     print()
-    
-    print("💡 建议:")
-    print("   - 快速原型和开发: 使用 OpenAI API")
-    print("   - 生产环境和隐私要求: 考虑本地 VLLM")
-    print("   - 大规模使用: 根据成本和性能权衡选择")
+
+    print("Recommendations:")
+    print("   - Rapid prototyping and development: Use OpenAI API")
+    print("   - Production environment and privacy requirements: Consider local VLLM")
+    print("   - Large-scale usage: Choose based on cost and performance trade-offs")
 
 
 def main():
-    """主函数"""
+    """Main function"""
     print("=" * 60)
-    print("GAM 模型使用示例")
+    print("GAM Model Usage Examples")
     print("=" * 60)
     print()
-    
-    # 检查 API Key
+
+    # Check API Key
     has_api_key = bool(os.getenv("OPENAI_API_KEY"))
-    
+
     if not has_api_key:
-        print("⚠️  未检测到 OPENAI_API_KEY 环境变量")
-        print("   某些示例将无法运行")
-        print("   设置方法: export OPENAI_API_KEY='your-api-key'\n")
-    
-    # 测试 OpenAI API 模型
+        print("OPENAI_API_KEY environment variable not detected")
+        print("   Some examples will not run")
+        print("   To set: export OPENAI_API_KEY='your-api-key'\n")
+
+    # Test OpenAI API model
     if has_api_key:
         try:
             openai_success = openai_api_example()
         except Exception as e:
-            print(f"OpenAI API 示例失败: {e}\n")
+            print(f"OpenAI API example failed: {e}\n")
             openai_success = False
     else:
-        print("跳过 OpenAI API 示例（未设置 API Key）\n")
+        print("Skipping OpenAI API example (API Key not set)\n")
         openai_success = False
-    
-    # 自定义端点示例（仅配置，不实际运行）
+
+    # Custom endpoint example (configuration only, not actually run)
     custom_endpoint_success = custom_api_endpoint_example()
-    
-    # 测试 VLLM 本地模型（可选）
-    print("是否测试 VLLM 本地模型？（需要 GPU 和模型文件）")
-    print("注意: 这将下载和加载大型模型，需要较长时间")
-    test_vllm = input("输入 'yes' 继续，或按 Enter 跳过: ").strip().lower()
-    
+
+    # Test VLLM local model (optional)
+    print("Test VLLM local model? (Requires GPU and model files)")
+    print("Note: This will download and load large models, which takes considerable time")
+    test_vllm = input("Enter 'yes' to continue, or press Enter to skip: ").strip().lower()
+
     if test_vllm == 'yes':
         vllm_success = vllm_local_model_example()
     else:
-        print("跳过 VLLM 本地模型示例\n")
+        print("Skipping VLLM local model example\n")
         vllm_success = False
-    
-    # 显示模型对比
+
+    # Display model comparison
     model_comparison()
-    
-    # 总结
+
+    # Summary
     print("\n" + "=" * 60)
-    print("示例总结")
+    print("Example Summary")
     print("=" * 60)
     if openai_success:
-        print("✅ OpenAI API 模型: 适合快速原型和部署")
+        print("OpenAI API Model: Suitable for rapid prototyping and deployment")
     if custom_endpoint_success:
-        print("✅ 自定义端点: 适合使用兼容 OpenAI 的第三方服务")
+        print("Custom Endpoint: Suitable for using OpenAI-compatible third-party services")
     if vllm_success:
-        print("✅ VLLM 本地模型: 适合隐私和离线使用")
-    
-    print("\n💡 根据你的需求选择合适的模型类型！")
-    print("\n更多信息:")
-    print("  - 查看 eval/ 目录了解评估示例")
-    print("  - 查看 gam/generator/ 了解生成器实现")
+        print("VLLM Local Model: Suitable for privacy and offline usage")
+
+    print("\nChoose the appropriate model type based on your needs!")
+    print("\nMore information:")
+    print("  - Check the eval/ directory for evaluation examples")
+    print("  - Check gam/generator/ for generator implementations")
 
 
 if __name__ == "__main__":

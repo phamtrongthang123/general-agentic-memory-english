@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-LoCoMo 数据集评估
+LoCoMo Dataset Evaluation
 
-LoCoMo 是一个长对话记忆数据集，测试多轮对话中的记忆能力
+LoCoMo is a long conversation memory dataset that tests memory capabilities in multi-turn conversations
 """
 
 import re
@@ -13,10 +13,10 @@ from eval.utils.metrics import compute_locomo_metrics
 
 
 class LoCoMoBenchmark(BaseBenchmark):
-    """LoCoMo 评估基准"""
-    
+    """LoCoMo Evaluation Benchmark"""
+
     def load_data(self) -> List[Dict[str, Any]]:
-        """加载 LoCoMo JSON 数据"""
+        """Load LoCoMo JSON data"""
         with open(self.config.data_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
@@ -29,8 +29,8 @@ class LoCoMoBenchmark(BaseBenchmark):
     
     def prepare_chunks(self, sample: Dict[str, Any]) -> List[str]:
         """
-        将对话分成多个 session chunks
-        每个 session 作为一个独立的记忆单元
+        Split conversation into multiple session chunks
+        Each session serves as an independent memory unit
         """
         conv = sample.get("conversation", {})
         sessions = self._extract_sessions(conv)
@@ -44,8 +44,8 @@ class LoCoMoBenchmark(BaseBenchmark):
     
     def extract_question(self, sample: Dict[str, Any]) -> str:
         """
-        LoCoMo 有多个问题，这里返回第一个问题
-        实际使用中可能需要遍历所有问题
+        LoCoMo has multiple questions, here we return the first question
+        In practice, you may need to iterate through all questions
         """
         qa_items = sample.get("qa", [])
         if qa_items:
@@ -53,7 +53,7 @@ class LoCoMoBenchmark(BaseBenchmark):
         return ""
     
     def extract_ground_truth(self, sample: Dict[str, Any]) -> List[str]:
-        """提取标准答案"""
+        """Extract ground truth answer"""
         qa_items = sample.get("qa", [])
         if qa_items:
             answer = qa_items[0].get("answer", "")
@@ -61,88 +61,88 @@ class LoCoMoBenchmark(BaseBenchmark):
         return []
     
     def compute_metrics(
-        self, 
-        predictions: List[str], 
+        self,
+        predictions: List[str],
         ground_truths: List[List[str]]
     ) -> Dict[str, float]:
-        """计算 F1 和 BLEU-1 指标（LoCoMo 特定）"""
+        """Compute F1 and BLEU-1 metrics (LoCoMo specific)"""
         return compute_locomo_metrics(predictions, ground_truths)
     
     def run(self) -> Dict[str, float]:
         """
-        重写 run 方法以处理多个 QA 对
-        LoCoMo 每个样本可能有多个问题
+        Override run method to handle multiple QA pairs
+        Each LoCoMo sample may have multiple questions
         """
-        print(f"正在加载数据集: {self.config.data_path}")
+        print(f"Loading dataset: {self.config.data_path}")
         self.data = self.load_data()
-        
+
         if self.config.max_samples:
             self.data = self.data[:self.config.max_samples]
-        
-        print(f"加载了 {len(self.data)} 个样本")
-        
-        # 初始化 Agent
-        print("正在初始化 GAM Agent...")
+
+        print(f"Loaded {len(self.data)} samples")
+
+        # Initialize agents
+        print("Initializing GAM Agent...")
         memory_agent, research_agent = self._setup_agents()
-        
-        # 运行评估
-        print("开始评估...")
+
+        # Run evaluation
+        print("Starting evaluation...")
         self.predictions = []
         ground_truths = []
-        
+
         for idx, sample in enumerate(self.data):
             if self.config.verbose:
-                print(f"\n处理样本 {idx + 1}/{len(self.data)}")
-            
+                print(f"\nProcessing sample {idx + 1}/{len(self.data)}")
+
             try:
-                # 准备chunks并记忆
+                # Prepare chunks and memorize
                 chunks = self.prepare_chunks(sample)
                 for chunk in chunks:
                     memory_agent.memorize(chunk)
-                
-                # 处理所有 QA 对
+
+                # Process all QA pairs
                 qa_items = sample.get("qa", [])
                 for qa in qa_items:
                     question = qa.get("question", "")
                     answer = qa.get("answer", "")
-                    
+
                     if not question:
                         continue
-                    
-                    # 研究
+
+                    # Research
                     research_output = research_agent.research(
                         question=question,
                         top_k=self.config.top_k
                     )
-                    
+
                     prediction = research_output.final_answer
                     self.predictions.append(prediction)
                     ground_truths.append([answer] if answer else [""])
-                    
+
                     if self.config.verbose:
-                        print(f"问题: {question[:80]}...")
-                        print(f"预测: {prediction[:80]}...")
-                        print(f"标准答案: {answer[:80]}...")
-            
+                        print(f"Question: {question[:80]}...")
+                        print(f"Prediction: {prediction[:80]}...")
+                        print(f"Ground truth: {answer[:80]}...")
+
             except Exception as e:
-                print(f"处理样本 {idx} 时出错: {e}")
+                print(f"Error processing sample {idx}: {e}")
                 continue
-        
-        # 计算指标
-        print("\n计算评估指标...")
+
+        # Compute metrics
+        print("\nComputing evaluation metrics...")
         self.results = self.compute_metrics(self.predictions, ground_truths)
-        
-        # 保存结果
+
+        # Save results
         if self.config.save_predictions:
             self._save_results()
-        
+
         return self.results
     
     def _extract_sessions(
-        self, 
+        self,
         conv_obj: Dict[str, Any]
     ) -> List[Tuple[int, str, List[Dict[str, Any]], Optional[str]]]:
-        """提取 session 信息"""
+        """Extract session information"""
         sessions = []
         for k, v in conv_obj.items():
             m = re.match(r'^session_(\d+)$', k)
@@ -168,7 +168,7 @@ class LoCoMoBenchmark(BaseBenchmark):
         turns: List[Dict[str, Any]],
         session_summary: Optional[str]
     ) -> str:
-        """将 session 转换为文本"""
+        """Convert session to text"""
         lines = [
             f"=== SESSION {idx} - Dialogue Time: {timestamp} ===",
             ""

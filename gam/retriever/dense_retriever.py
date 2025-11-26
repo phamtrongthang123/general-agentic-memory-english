@@ -12,13 +12,13 @@ from gam.schemas import InMemoryPageStore, Hit, Page
 
 def _build_faiss_index(embeddings: np.ndarray) -> faiss.Index:
     """
-    构建 FAISS 索引
-    embeddings: (n, dim) 的 numpy 数组
+    Build FAISS index
+    embeddings: numpy array of shape (n, dim)
     """
     dimension = embeddings.shape[1]
-    # 使用内积索引（cosine similarity）
+    # Use inner product index (cosine similarity)
     index = faiss.IndexFlatIP(dimension)
-    # L2 归一化以支持 cosine similarity（复制数组以避免修改原始数据）
+    # L2 normalize to support cosine similarity (copy array to avoid modifying original data)
     embeddings_normalized = embeddings.copy()
     faiss.normalize_L2(embeddings_normalized)
     index.add(embeddings_normalized)
@@ -27,17 +27,17 @@ def _build_faiss_index(embeddings: np.ndarray) -> faiss.Index:
 
 def _search_faiss_index(index: faiss.Index, query_embeddings: np.ndarray, top_k: int):
     """
-    在 FAISS 索引中搜索
-    index: FAISS 索引
-    query_embeddings: (n_queries, dim) 的查询向量
-    top_k: 返回的 top-k 结果数
-    返回: (scores_list, indices_list) 其中每个元素都是 (top_k,) 的数组
+    Search in FAISS index
+    index: FAISS index
+    query_embeddings: query vectors of shape (n_queries, dim)
+    top_k: number of top-k results to return
+    Returns: (scores_list, indices_list) where each element is an array of shape (top_k,)
     """
-    # L2 归一化查询向量（复制以避免修改原始数据）
+    # L2 normalize query vectors (copy to avoid modifying original data)
     query_embeddings_normalized = query_embeddings.copy()
     faiss.normalize_L2(query_embeddings_normalized)
-    
-    # 搜索
+
+    # Search
     scores, indices = index.search(query_embeddings_normalized, top_k)
     
     scores_list = [scores[i] for i in range(len(query_embeddings))]
@@ -53,26 +53,26 @@ class DenseRetriever(AbsRetriever):
         self.index = None
         self.doc_emb = None
         
-        # 检查是否使用 API 模式
-        self.api_url = config.get("api_url")  # 如 "http://localhost:8001"
+        # Check if using API mode
+        self.api_url = config.get("api_url")  # e.g., "http://localhost:8001"
         self.use_api = self.api_url is not None
-        
+
         if self.use_api:
-            # API 模式：不加载本地模型
-            print(f"[DenseRetriever] 使用 API 模式: {self.api_url}")
+            # API mode: don't load local model
+            print(f"[DenseRetriever] Using API mode: {self.api_url}")
             self.model = None
-            # 测试连接
+            # Test connection
             try:
                 response = requests.get(f"{self.api_url}/health", timeout=5)
                 if response.status_code == 200:
-                    print(f"[DenseRetriever] API 服务连接成功: {response.json()}")
+                    print(f"[DenseRetriever] API service connected successfully: {response.json()}")
                 else:
-                    print(f"[DenseRetriever] 警告: API 服务响应异常: {response.status_code}")
+                    print(f"[DenseRetriever] Warning: API service responded abnormally: {response.status_code}")
             except Exception as e:
-                print(f"[DenseRetriever] 警告: 无法连接到 API 服务: {e}")
+                print(f"[DenseRetriever] Warning: Unable to connect to API service: {e}")
         else:
-            # 本地模式：加载模型
-            print(f"[DenseRetriever] 使用本地模式，加载模型: {config.get('model_name')}")
+            # Local mode: load model
+            print(f"[DenseRetriever] Using local mode, loading model: {config.get('model_name')}")
             self.model = FlagAutoModel.from_finetuned(
                 config.get("model_name"),
                 normalize_embeddings=config.get("normalize_embeddings", True),
@@ -84,7 +84,7 @@ class DenseRetriever(AbsRetriever):
             )
 
 
-    # ---------- 内部小工具 ----------
+    # ---------- Internal utilities ----------
     def _index_dir(self) -> str:
         return self.config["index_dir"]
 
@@ -96,26 +96,26 @@ class DenseRetriever(AbsRetriever):
 
     def _encode_via_api(self, texts: List[str], encode_type: str = "corpus") -> np.ndarray:
         """
-        通过 API 编码文本
-        
+        Encode text via API
+
         Args:
-            texts: 文本列表
-            encode_type: "corpus" 或 "query"
-        
+            texts: list of texts
+            encode_type: "corpus" or "query"
+
         Returns:
             embeddings as numpy array
         """
-        # 验证输入
+        # Validate input
         if not texts:
-            raise ValueError(f"[DenseRetriever] 文本列表为空，无法编码")
-        
-        # 过滤掉空字符串
+            raise ValueError(f"[DenseRetriever] Text list is empty, cannot encode")
+
+        # Filter out empty strings
         non_empty_texts = [t for t in texts if t and t.strip()]
         if not non_empty_texts:
-            raise ValueError(f"[DenseRetriever] 所有文本都为空，无法编码")
-        
+            raise ValueError(f"[DenseRetriever] All texts are empty, cannot encode")
+
         if len(non_empty_texts) != len(texts):
-            print(f"[DenseRetriever] 警告: 过滤掉了 {len(texts) - len(non_empty_texts)} 个空文本")
+            print(f"[DenseRetriever] Warning: Filtered out {len(texts) - len(non_empty_texts)} empty texts")
         
         try:
             request_data = {
@@ -128,22 +128,22 @@ class DenseRetriever(AbsRetriever):
             response = requests.post(
                 f"{self.api_url}/encode",
                 json=request_data,
-                timeout=300  # 5分钟超时，大批量编码可能需要较长时间
+                timeout=300  # 5 minute timeout, large batch encoding may take longer
             )
-            
-            # 如果请求失败，打印详细的错误信息
+
+            # If request fails, print detailed error message
             if response.status_code != 200:
                 error_detail = ""
                 try:
                     error_response = response.json()
-                    error_detail = f" 服务器错误信息: {error_response}"
+                    error_detail = f" Server error message: {error_response}"
                 except:
-                    error_detail = f" 响应内容: {response.text[:500]}"
-                
+                    error_detail = f" Response content: {response.text[:500]}"
+
                 error_msg = (
-                    f"[DenseRetriever] API 编码失败: {response.status_code} {response.reason}\n"
-                    f"  请求URL: {self.api_url}/encode\n"
-                    f"  请求参数: texts数量={len(non_empty_texts)}, type={encode_type}, "
+                    f"[DenseRetriever] API encoding failed: {response.status_code} {response.reason}\n"
+                    f"  Request URL: {self.api_url}/encode\n"
+                    f"  Request params: texts count={len(non_empty_texts)}, type={encode_type}, "
                     f"batch_size={request_data['batch_size']}, max_length={request_data['max_length']}\n"
                     f"{error_detail}"
                 )
@@ -152,12 +152,12 @@ class DenseRetriever(AbsRetriever):
             
             result = response.json()
             embeddings = np.array(result["embeddings"], dtype=np.float32)
-            
-            # 如果过滤了空文本，需要补充空向量以保持索引对应
+
+            # If empty texts were filtered, need to add zero vectors to maintain index correspondence
             if len(non_empty_texts) != len(texts):
-                # 找到空文本的位置
+                # Find positions of empty texts
                 empty_indices = [i for i, t in enumerate(texts) if not t or not t.strip()]
-                # 构建完整的 embeddings 数组
+                # Build complete embeddings array
                 full_embeddings = np.zeros((len(texts), embeddings.shape[1]), dtype=np.float32)
                 non_empty_idx = 0
                 for i in range(len(texts)):
@@ -169,21 +169,21 @@ class DenseRetriever(AbsRetriever):
             return embeddings
         except requests.exceptions.RequestException as e:
             error_msg = (
-                f"[DenseRetriever] API 编码失败（网络错误）: {e}\n"
-                f"  请求URL: {self.api_url}/encode\n"
-                f"  请检查: 1) API服务是否运行 2) URL是否正确 3) 网络连接是否正常"
+                f"[DenseRetriever] API encoding failed (network error): {e}\n"
+                f"  Request URL: {self.api_url}/encode\n"
+                f"  Please check: 1) Is API service running 2) Is URL correct 3) Is network connection normal"
             )
             print(error_msg)
             raise
         except Exception as e:
-            print(f"[DenseRetriever] API 编码失败: {e}")
+            print(f"[DenseRetriever] API encoding failed: {e}")
             import traceback
             traceback.print_exc()
             raise
 
     def _encode_pages(self, pages: List[Page]) -> np.ndarray:
-        # 和 build() / update() 保持一致的编码方式
-        # 处理可能的 None 值
+        # Keep encoding method consistent with build() / update()
+        # Handle possible None values
         texts = []
         for p in pages:
             header = p.header if p.header is not None else ""
@@ -193,62 +193,62 @@ class DenseRetriever(AbsRetriever):
             texts.append(text)
         
         if self.use_api:
-            # API 模式
+            # API mode
             return self._encode_via_api(texts, encode_type="corpus")
         else:
-            # 本地模式
+            # Local mode
             return self.model.encode_corpus(
                 texts,
                 batch_size=self.config.get("batch_size", 32),
                 max_length=self.config.get("max_length", 512),
             )
 
-    # ---------- 对外接口 ----------
+    # ---------- Public interface ----------
     def load(self) -> None:
         """
-        从磁盘恢复：
-        - pages 快照
+        Restore from disk:
+        - pages snapshot
         - doc_emb.npy
-        - faiss 索引
+        - faiss index
         """
-        # 如果load失败，不抛死，只打印，这样ResearchAgent可以再走build()
+        # If load fails, don't throw exception, just print, so ResearchAgent can call build()
         try:
-            # 读向量
+            # Read vectors
             self.doc_emb = np.load(self._emb_path())
-            # 重建 index
+            # Rebuild index
             self.index = _build_faiss_index(self.doc_emb)
-            # 读 pages
+            # Read pages
             self.pages = InMemoryPageStore.load(self._pages_dir()).load()
         except Exception as e:
             print("DenseRetriever.load() failed, will need build():", e)
 
     def build(self, page_store: InMemoryPageStore) -> None:
         """
-        全量重建向量索引。
+        Full rebuild of vector index.
         """
         os.makedirs(self._pages_dir(), exist_ok=True)
 
-        # 1. 把当前 page_store 取出来
+        # 1. Extract current page_store
         self.pages = page_store.load()
 
-        # 2. 全量编码
+        # 2. Full encoding
         self.doc_emb = self._encode_pages(self.pages)
 
-        # 3. 建 faiss 索引
+        # 3. Build faiss index
         self.index = _build_faiss_index(self.doc_emb)
 
-        # 4. 持久化
-        # 创建临时 PageStore 实例来保存
+        # 4. Persist
+        # Create temporary PageStore instance to save
         temp_page_store = InMemoryPageStore(dir_path=self._pages_dir())
         temp_page_store.save(self.pages)
         np.save(self._emb_path(), self.doc_emb)
 
     def update(self, page_store: InMemoryPageStore) -> None:
         """
-        增量更新：如果只是新增了一些 Page，或者后半段变了，
-        我们就只重新编码“变化起点”之后的部分，而不是全量重算。
+        Incremental update: If only some Pages were added or the latter part changed,
+        we only re-encode the part after the "change point" instead of full recalculation.
         """
-        # 如果我们还没有 build 过，就直接走 build
+        # If we haven't built yet, directly call build
         if not self.pages or self.doc_emb is None or self.index is None:
             self.build(page_store)
             return
@@ -256,22 +256,22 @@ class DenseRetriever(AbsRetriever):
         new_pages = page_store.load()
         old_pages = self.pages
 
-        # 1. 找到第一个差异位置 diff_idx
+        # 1. Find the first difference position diff_idx
         max_shared = min(len(new_pages), len(old_pages))
-        diff_idx = max_shared  # 假设一开始完全一致
+        diff_idx = max_shared  # Assume they are initially identical
         for i in range(max_shared):
             if Page.equal(new_pages[i], old_pages[i]):
                 continue
             diff_idx = i
             break
 
-        # 2. 判断有没有实际变化
+        # 2. Check if there are actual changes
         changed = (diff_idx < max_shared) or (len(new_pages) != len(old_pages))
         if not changed:
-            # 完全没变，直接返回
+            # No changes at all, return directly
             return
 
-        # 3. 我们保留前 diff_idx 段的老向量，后半段重新编码
+        # 3. Keep old vectors from the first diff_idx segment, re-encode the latter part
         keep_emb = self.doc_emb[:diff_idx]
 
         tail_pages = new_pages[diff_idx:]
@@ -279,50 +279,50 @@ class DenseRetriever(AbsRetriever):
 
         new_doc_emb = np.concatenate([keep_emb, tail_emb], axis=0)
 
-        # 4. 重新建 faiss 索引
+        # 4. Rebuild faiss index
         self.index = _build_faiss_index(new_doc_emb)
 
-        # 5. 持久化 + 刷内存
-        # 更新内存
+        # 5. Persist + refresh memory
+        # Update memory
         self.pages = new_pages
         self.doc_emb = new_doc_emb
-        
-        # 创建临时 PageStore 实例来保存
+
+        # Create temporary PageStore instance to save
         temp_page_store = InMemoryPageStore(dir_path=self._pages_dir())
         temp_page_store.save(self.pages)
         np.save(self._emb_path(), self.doc_emb)
 
     def search(self, query_list: List[str], top_k: int = 10) -> List[List[Hit]]:
         """
-        输入: 多个query
-        输出: 对应多个query的检索结果 (Hit 列表)
-        对于多个query，会对每个query进行独立搜索，然后按page_id聚合得分（累加），最后返回top_k结果
+        Input: multiple queries
+        Output: retrieval results for corresponding queries (Hit list)
+        For multiple queries, each query is searched independently, then scores are aggregated by page_id (cumulative), and finally top_k results are returned
         """
         if self.index is None:
-            # 如果还没 index（比如没调用 build/load），尝试load一下
+            # If no index yet (e.g., build/load not called), try loading
             self.load()
-            # 如果load也没成功，那 index 还是 None，就直接空返回
+            # If load also fails, index is still None, return empty directly
             if self.index is None:
                 return [[] for _ in query_list]
 
-        # 把所有 query 一起编码
+        # Encode all queries together
         if self.use_api:
-            # API 模式
+            # API mode
             queries_emb = self._encode_via_api(query_list, encode_type="query")
         else:
-            # 本地模式
+            # Local mode
             queries_emb = self.model.encode_queries(
                 query_list,
                 batch_size=self.config.get("batch_size", 32),
                 max_length=self.config.get("max_length", 512),
             )
 
-        # 使用自定义的 search 函数
+        # Use custom search function
         scores_list, indices_list = _search_faiss_index(self.index, queries_emb, top_k)
 
-        # 按 page_id 聚合得分：如果同一个 page 被多个 query 搜索到，累加得分
-        page_scores: Dict[str, float] = {}  # page_id -> 累计得分
-        page_hits: Dict[str, Hit] = {}      # page_id -> Hit对象（保存第一个遇到的Hit作为代表）
+        # Aggregate scores by page_id: if the same page is found by multiple queries, accumulate scores
+        page_scores: Dict[str, float] = {}  # page_id -> cumulative score
+        page_hits: Dict[str, Hit] = {}      # page_id -> Hit object (save first encountered Hit as representative)
 
         for scores, indices in zip(scores_list, indices_list):
             for rank, (idx, sc) in enumerate(zip(indices, scores)):
@@ -335,10 +335,10 @@ class DenseRetriever(AbsRetriever):
                 score = float(sc)
 
                 if page_id in page_scores:
-                    # 累加得分
+                    # Accumulate score
                     page_scores[page_id] += score
                 else:
-                    # 第一次遇到这个page，保存得分和Hit对象
+                    # First time encountering this page, save score and Hit object
                     page_scores[page_id] = score
                     page_hits[page_id] = Hit(
                         page_id=page_id,
@@ -347,15 +347,15 @@ class DenseRetriever(AbsRetriever):
                         meta={"rank": rank, "score": score},
                     )
 
-        # 按总分排序，取 top k
+        # Sort by total score, take top k
         sorted_pages = sorted(page_scores.items(), key=lambda x: x[1], reverse=True)
         top_k_pages = sorted_pages[:top_k]
 
-        # 构建最终的hits列表（使用累加后的得分）
+        # Build final hits list (using accumulated scores)
         final_hits: List[Hit] = []
         for rank, (page_id, total_score) in enumerate(top_k_pages):
             hit = page_hits[page_id]
-            # 更新meta中的得分为累加后的总分
+            # Update score in meta to accumulated total score
             updated_meta = hit.meta.copy() if hit.meta else {}
             updated_meta["rank"] = rank
             updated_meta["score"] = total_score
@@ -368,5 +368,5 @@ class DenseRetriever(AbsRetriever):
                 )
             )
 
-        # 返回 List[List[Hit]] 格式（只有一个列表，即聚合后的结果）
+        # Return List[List[Hit]] format (only one list, i.e., aggregated result)
         return [final_hits]

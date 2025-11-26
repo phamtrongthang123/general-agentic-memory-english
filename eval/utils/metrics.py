@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-评估指标工具模块
+Evaluation Metrics Utilities Module
 
-提供常用的 NLP 评估指标：
+Provides common NLP evaluation metrics:
 - Exact Match (EM)
 - F1 Score
 - BLEU-1
@@ -18,12 +18,12 @@ from typing import List, Dict, Any, Union
 
 def normalize_answer(s: str) -> str:
     """
-    标准化答案文本
-    
-    - 转小写
-    - 移除标点
-    - 移除冠词
-    - 标准化空白字符
+    Normalize answer text
+
+    - Convert to lowercase
+    - Remove punctuation
+    - Remove articles
+    - Normalize whitespace
     """
     def remove_articles(text):
         return re.sub(r'\b(a|an|the)\b', ' ', text)
@@ -43,14 +43,14 @@ def normalize_answer(s: str) -> str:
 
 def exact_match_score(prediction: str, ground_truths: List[str]) -> float:
     """
-    计算 Exact Match 分数
-    
+    Compute Exact Match score
+
     Args:
-        prediction: 预测答案
-        ground_truths: 标准答案列表
-        
+        prediction: Predicted answer
+        ground_truths: List of ground truth answers
+
     Returns:
-        1.0 如果匹配任一标准答案，否则 0.0
+        1.0 if matches any ground truth answer, otherwise 0.0
     """
     normalized_pred = normalize_answer(prediction)
     for gt in ground_truths:
@@ -61,14 +61,14 @@ def exact_match_score(prediction: str, ground_truths: List[str]) -> float:
 
 def f1_score(prediction: str, ground_truths: List[str]) -> float:
     """
-    计算 F1 分数（基于词级别）
-    
+    Compute F1 score (word-level)
+
     Args:
-        prediction: 预测答案
-        ground_truths: 标准答案列表
-        
+        prediction: Predicted answer
+        ground_truths: List of ground truth answers
+
     Returns:
-        最高的 F1 分数
+        Maximum F1 score
     """
     normalized_pred = normalize_answer(prediction)
     pred_tokens = normalized_pred.split()
@@ -94,34 +94,34 @@ def f1_score(prediction: str, ground_truths: List[str]) -> float:
 
 
 def rouge_score(
-    prediction: str, 
+    prediction: str,
     ground_truths: List[str],
     rouge_type: str = "rouge-l"
 ) -> float:
     """
-    计算 ROUGE 分数
-    
+    Compute ROUGE score
+
     Args:
-        prediction: 预测答案
-        ground_truths: 标准答案列表
-        rouge_type: ROUGE 类型 ("rouge-1", "rouge-2", "rouge-l")
-        
+        prediction: Predicted answer
+        ground_truths: List of ground truth answers
+        rouge_type: ROUGE type ("rouge-1", "rouge-2", "rouge-l")
+
     Returns:
-        最高的 ROUGE F1 分数
+        Maximum ROUGE F1 score
     """
     try:
         from rouge_score import rouge_scorer
         scorer = rouge_scorer.RougeScorer([rouge_type], use_stemmer=True)
-        
+
         max_score = 0.0
         for gt in ground_truths:
             scores = scorer.score(gt, prediction)
             score = scores[rouge_type].fmeasure
             max_score = max(max_score, score)
-        
+
         return max_score
     except ImportError:
-        # 如果 rouge_score 不可用，返回 F1 分数作为替代
+        # If rouge_score is not available, return F1 score as fallback
         return f1_score(prediction, ground_truths)
 
 
@@ -131,18 +131,18 @@ def compute_metrics(
     metrics: List[str] = ["em", "f1"]
 ) -> Dict[str, float]:
     """
-    批量计算评估指标
-    
+    Batch compute evaluation metrics
+
     Args:
-        predictions: 预测答案列表
-        ground_truths_list: 标准答案列表的列表
-        metrics: 要计算的指标列表 ["em", "f1", "rouge"]
-        
+        predictions: List of predicted answers
+        ground_truths_list: List of ground truth answer lists
+        metrics: List of metrics to compute ["em", "f1", "rouge"]
+
     Returns:
-        各指标的平均分数
+        Average scores for each metric
     """
     if len(predictions) != len(ground_truths_list):
-        raise ValueError("预测数量与标准答案数量不匹配")
+        raise ValueError("Number of predictions does not match number of ground truths")
     
     results = {metric: [] for metric in metrics}
     
@@ -164,8 +164,8 @@ def compute_metrics(
         
         if "rouge-2" in metrics:
             results.setdefault("rouge-2", []).append(rouge_score(pred, gts, "rouge-2"))
-    
-    # 计算平均值
+
+    # Compute averages
     avg_results = {
         metric: sum(scores) / len(scores) if scores else 0.0
         for metric, scores in results.items()
@@ -176,17 +176,17 @@ def compute_metrics(
 
 def compute_accuracy(predictions: List[str], ground_truths: List[str]) -> float:
     """
-    计算准确率（严格匹配）
-    
+    Compute accuracy (strict matching)
+
     Args:
-        predictions: 预测答案列表
-        ground_truths: 标准答案列表
-        
+        predictions: List of predicted answers
+        ground_truths: List of ground truth answers
+
     Returns:
-        准确率
+        Accuracy
     """
     if len(predictions) != len(ground_truths):
-        raise ValueError("预测数量与标准答案数量不匹配")
+        raise ValueError("Number of predictions does not match number of ground truths")
     
     correct = sum(
         1 for pred, gt in zip(predictions, ground_truths)
@@ -196,12 +196,12 @@ def compute_accuracy(predictions: List[str], ground_truths: List[str]) -> float:
     return correct / len(predictions) if predictions else 0.0
 
 
-# ========== LoCoMo 特定的评估指标 ==========
+# ========== LoCoMo-Specific Evaluation Metrics ==========
 
 def normalize_text_locomo(s: str) -> str:
     """
-    LoCoMo 数据集特定的文本标准化
-    与原 eval/evalution_locomo.py 中的 normalize_text 保持一致
+    LoCoMo dataset-specific text normalization
+    Consistent with normalize_text in original eval/evalution_locomo.py
     """
     if s is None:
         return ""
@@ -215,15 +215,15 @@ def normalize_text_locomo(s: str) -> str:
 
 
 def tokens_locomo(s: str):
-    """LoCoMo 分词"""
+    """LoCoMo tokenization"""
     s = normalize_text_locomo(s)
     return s.split() if s else []
 
 
 def f1_score_locomo(pred: str, gold: str) -> float:
     """
-    LoCoMo 数据集特定的 F1 计算
-    与原 eval/evalution_locomo.py 中的 f1_score 保持一致
+    LoCoMo dataset-specific F1 computation
+    Consistent with f1_score in original eval/evalution_locomo.py
     """
     gtoks = tokens_locomo(gold)
     ptoks = tokens_locomo(pred)
@@ -245,8 +245,8 @@ def f1_score_locomo(pred: str, gold: str) -> float:
 
 def bleu1_score(pred: str, gold: str) -> float:
     """
-    计算 BLEU-1 分数
-    与原 eval/evalution_locomo.py 中的 bleu1_score 保持一致
+    Compute BLEU-1 score
+    Consistent with bleu1_score in original eval/evalution_locomo.py
     """
     gtoks = tokens_locomo(gold)
     ptoks = tokens_locomo(pred)
@@ -268,26 +268,26 @@ def compute_locomo_metrics(
     ground_truths_list: List[List[str]]
 ) -> Dict[str, float]:
     """
-    计算 LoCoMo 特定的评估指标（F1 和 BLEU-1）
-    
+    Compute LoCoMo-specific evaluation metrics (F1 and BLEU-1)
+
     Args:
-        predictions: 预测答案列表
-        ground_truths_list: 标准答案列表的列表
-        
+        predictions: List of predicted answers
+        ground_truths_list: List of ground truth answer lists
+
     Returns:
-        评估指标字典
+        Dictionary of evaluation metrics
     """
     if len(predictions) != len(ground_truths_list):
-        raise ValueError("预测数量与标准答案数量不匹配")
-    
+        raise ValueError("Number of predictions does not match number of ground truths")
+
     f1_scores = []
     bleu1_scores = []
-    
+
     for pred, gts in zip(predictions, ground_truths_list):
         if not isinstance(gts, list):
             gts = [gts]
-        
-        # 对每个标准答案计算分数，取最大值
+
+        # Compute score for each ground truth, take maximum
         max_f1 = max([f1_score_locomo(pred, gt) for gt in gts]) if gts else 0.0
         max_bleu1 = max([bleu1_score(pred, gt) for gt in gts]) if gts else 0.0
         

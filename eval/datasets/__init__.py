@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""数据集加载和适配模块"""
+"""Dataset loading and adaptation module"""
 
 from eval.datasets.hotpotqa import HotpotQABenchmark
 from eval.datasets.narrativeqa import NarrativeQABenchmark
