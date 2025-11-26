@@ -1,4 +1,6 @@
-# General Agentic Memory (GAM)
+# General Agentic Memory (GAM) (English Translated)
+A lot of comments inside the original code are in Chinese, so I forked the repo and translated all the comments into English for better understanding.
+
 
 <p align="center">
   <a href="https://arxiv.org/abs/2511.18423" target="_blank">
